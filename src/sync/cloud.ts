@@ -104,7 +104,10 @@ const SQL_TABLE: Partial<Record<SyncOp['entity'], string>> = {
 
 export async function pushCloud(snapshot: Snapshot, ops: SyncOp[]): Promise<void> {
   const actor = actorOf(snapshot);
-  if (!actor) return;
+  if (!actor) {
+    if (ops.some((op) => op.entity === 'invite')) throw new Error('Torna a entrar per desar el codi d’invitació');
+    return;
+  }
   for (const op of ops) {
     const table = SQL_TABLE[op.entity];
     if (!table) continue;
@@ -119,7 +122,10 @@ export async function pushCloud(snapshot: Snapshot, ops: SyncOp[]): Promise<void
       clientId: (row.client_id as string | null) ?? null,
       usedAt: (row.used_at as string | null) ?? null,
     };
-    if (!opIsAllowed(actor, op.entity, scope)) continue;
+    if (!opIsAllowed(actor, op.entity, scope)) {
+      if (op.entity === 'invite') throw new Error('No s’ha pogut desar el codi d’invitació');
+      continue;
+    }
     await request(table, {
       method: 'POST',
       headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },

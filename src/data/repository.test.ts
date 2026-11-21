@@ -207,7 +207,196 @@ describe('repositori i cua', () => {
     expect(rebuilt.length).toBeGreaterThan(0);
     expect(rebuilt.every((session) => sent.includes(session.id))).toBe(true);
   });
+
+  it('el codi d’invitació es desa al núvol abans de mostrar-lo, també si ja hi havia una sincronització', async () => {
+    const storage = new MemoryStorage();
+    const seed = accountSeed();
+    storage.snapshot = seed;
+    let release: () => void = () => undefined;
+    let opened: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      opened = resolve;
+    });
+    let calls = 0;
+    const codes: string[] = [];
+    const remote: RemoteStore = {
+      name: 'supabase',
+      async pull() {
+        return collectionsOf(seed);
+      },
+      async push() {
+        return undefined;
+      },
+      async pushPending(snapshot, ops) {
+        calls += 1;
+        for (const op of ops) {
+          if (op.entity !== 'invite') continue;
+          const invite = (snapshot.invites ?? []).find((item) => item.id === op.entityId);
+          if (invite) codes.push(invite.code);
+        }
+        if (calls === 1) {
+          opened();
+          await gate;
+        }
+      },
+    };
+    const repo = await Repository.load(storage, remote);
+    const first = repo.flush();
+    await started;
+    const pendingCode = repo.createInvite('Felix', 'felix@exemple.cat');
+    for (let attempt = 0; attempt < 40 && (repo.snapshot.invites ?? []).length === 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    release();
+    const code = await pendingCode;
+    await first;
+    expect(code).toMatch(/^[A-Z0-9]{6}$/);
+    expect(codes).toContain(code);
+    expect(pendingOps(repo.queue).some((op) => op.entity === 'invite')).toBe(false);
+  });
+
+  it('si el núvol rebutja el codi, no es mostra i es pot tornar a provar', async () => {
+    const storage = new MemoryStorage();
+    const seed = accountSeed();
+    storage.snapshot = seed;
+    const remote: RemoteStore = {
+      name: 'supabase',
+      async pull() {
+        return collectionsOf(seed);
+      },
+      async push() {
+        return undefined;
+      },
+      async pushPending() {
+        throw new Error('Supabase ha rebutjat la invitació');
+      },
+    };
+    const repo = await Repository.load(storage, remote);
+    await expect(repo.createInvite('Felix', 'felix@exemple.cat')).rejects.toThrow(/invitació/);
+    expect(repo.snapshot.invites ?? []).toHaveLength(0);
+    expect(pendingOps(repo.queue).some((op) => op.entity === 'invite')).toBe(false);
+  });
+
+  it('en recarregar la llista, el codi pendent que no és al núvol s’hi envia', async () => {
+    const storage = new MemoryStorage();
+    const seed = accountSeed();
+    seed.invites = [felixInvite(seed.trainers[0].id)];
+    storage.snapshot = seed;
+    storage.queue = [];
+    const codes: string[] = [];
+    const remote: RemoteStore = {
+      name: 'supabase',
+      async pull() {
+        return { ...collectionsOf(seed), invites: [] };
+      },
+      async push() {
+        return undefined;
+      },
+      async pushPending(snapshot, ops) {
+        for (const op of ops) {
+          if (op.entity !== 'invite') continue;
+          const invite = (snapshot.invites ?? []).find((item) => item.id === op.entityId);
+          if (invite) codes.push(invite.code);
+        }
+      },
+    };
+    const repo = await Repository.load(storage, remote);
+    const trainer = seed.trainers[0];
+    await repo.adoptAccount(
+      {
+        profiles: [
+          {
+            id: trainer.id,
+            role: 'trainer',
+            name: trainer.name,
+            email: trainer.email,
+            trainerId: null,
+            status: 'active',
+            createdAt: trainer.createdAt,
+            updatedAt: trainer.updatedAt,
+          },
+        ],
+        invites: [],
+        exercises: seed.exercises,
+        templates: seed.templates,
+        plans: [],
+        sessions: [],
+        logs: [],
+      },
+      trainer.id,
+    );
+    expect(repo.snapshot.invites?.some((invite) => invite.code === '9QCD9L')).toBe(true);
+    expect(await repo.flush()).toBe('synced');
+    expect(codes).toContain('9QCD9L');
+    expect(repo.snapshot.invites?.some((invite) => invite.code === '9QCD9L')).toBe(true);
+  });
+
+  it('un codi que ja es veu a la llista però no és al núvol es torna a enviar', async () => {
+    const storage = new MemoryStorage();
+    const seed = accountSeed();
+    seed.invites = [
+      {
+        id: 'inv_felix',
+        trainerId: seed.trainers[0].id,
+        name: 'Felix',
+        email: 'felix@exemple.cat',
+        code: '9QCD9L',
+        clientId: null,
+        usedAt: null,
+        createdAt: '2026-11-21T15:00:00.000Z',
+        updatedAt: '2026-11-21T15:00:00.000Z',
+      },
+    ];
+    storage.snapshot = seed;
+    const codes: string[] = [];
+    const remote: RemoteStore = {
+      name: 'supabase',
+      async pull() {
+        return { ...collectionsOf(seed), invites: [] };
+      },
+      async push() {
+        return undefined;
+      },
+      async pushPending(snapshot, ops) {
+        for (const op of ops) {
+          if (op.entity !== 'invite') continue;
+          const invite = (snapshot.invites ?? []).find((item) => item.id === op.entityId);
+          if (invite) codes.push(invite.code);
+        }
+      },
+    };
+    const repo = await Repository.load(storage, remote);
+    expect(await repo.flush()).toBe('synced');
+    expect(codes).toContain('9QCD9L');
+  });
 });
+
+function felixInvite(trainerId: string) {
+  return {
+    id: 'inv_felix',
+    trainerId,
+    name: 'Felix',
+    email: 'felix@exemple.cat',
+    code: '9QCD9L',
+    clientId: null,
+    usedAt: null,
+    createdAt: '2026-11-21T15:00:00.000Z',
+    updatedAt: '2026-11-21T15:00:00.000Z',
+  };
+}
+
+function accountSeed(): Snapshot {
+  const seed = buildSeed(new Date(2026, 10, 21));
+  seed.settings.role = 'trainer';
+  seed.settings.mode = 'account';
+  seed.settings.userId = seed.trainers[0].id;
+  seed.settings.trainerId = seed.trainers[0].id;
+  seed.invites = [];
+  return seed;
+}
 
 function collectionsOf(seed: Snapshot): DataCollections {
   return {
