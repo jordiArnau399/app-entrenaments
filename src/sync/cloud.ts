@@ -102,12 +102,11 @@ const SQL_TABLE: Partial<Record<SyncOp['entity'], string>> = {
   invite: 'invites',
 };
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function pushCloud(snapshot: Snapshot, ops: SyncOp[]): Promise<void> {
   const actor = actorOf(snapshot);
-  if (!actor) {
-    if (ops.some((op) => op.entity === 'invite')) throw new Error('Torna a entrar per desar el codi d’invitació');
-    return;
-  }
+  if (!actor) throw new Error('Torna a entrar per desar els canvis al núvol');
   for (const op of ops) {
     const table = SQL_TABLE[op.entity];
     if (!table) continue;
@@ -117,14 +116,19 @@ export async function pushCloud(snapshot: Snapshot, ops: SyncOp[]): Promise<void
     }
     const row = rowFor(snapshot, op);
     if (!row) continue;
+    for (const key of ['trainer_id', 'client_id', 'sender_id'] as const) {
+      const value = row[key];
+      if (typeof value === 'string' && value.length > 0 && !UUID.test(value)) {
+        throw new Error('Això és una dada de la demostració i el compte real no l’accepta.');
+      }
+    }
     const scope = {
       trainerId: String(row.trainer_id ?? ''),
       clientId: (row.client_id as string | null) ?? null,
       usedAt: (row.used_at as string | null) ?? null,
     };
     if (!opIsAllowed(actor, op.entity, scope)) {
-      if (op.entity === 'invite') throw new Error('No s’ha pogut desar el codi d’invitació');
-      continue;
+      throw new Error('new row violates row-level security policy');
     }
     await request(table, {
       method: 'POST',

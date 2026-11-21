@@ -75,11 +75,41 @@ export const clientNav: NavItem[] = [
   { href: '/client/ajustos', label: 'Ajustos', active: (path) => path.startsWith('/client/ajustos') },
 ];
 
+export function SyncLabel({ light = false }: { light?: boolean }) {
+  const { snapshot, pending, hub, syncProblems, retrySync, syncing } = useApp();
+  const [open, setOpen] = useState(false);
+  const sync = syncCopy(Boolean(snapshot?.settings.offline), pending, hub);
+  const color = light ? (pending > 0 ? '#F6C7C2' : '#B7AFA3') : sync.color;
+  return (
+    <View style={{ gap: 8 }}>
+      <Pressable accessibilityRole="button" disabled={pending === 0} onPress={() => setOpen((value) => !value)}>
+        <Text style={{ color, fontFamily: font.body, fontSize: 13 }}>{sync.label}</Text>
+      </Pressable>
+      {open && pending > 0 ? (
+        <View style={{ gap: 8 }}>
+          {syncProblems.length === 0 ? (
+            <Text style={{ color, fontFamily: font.body, fontSize: 12 }}>Encara no hi ha el detall. Es torna a provar sol.</Text>
+          ) : (
+            syncProblems.map((problem) => (
+              <View key={problem.id} style={{ gap: 2 }}>
+                <Text style={{ color: light ? '#F6F1E8' : colors.ink, fontFamily: font.body, fontSize: 12, fontWeight: '600' }}>{problem.title}</Text>
+                <Text style={{ color, fontFamily: font.body, fontSize: 12 }}>{problem.detail}</Text>
+              </View>
+            ))
+          )}
+          <Pressable accessibilityRole="button" disabled={syncing} onPress={() => { retrySync().catch(() => undefined); }}>
+            <Text style={{ color: light ? '#F6F1E8' : colors.accent, fontFamily: font.body, fontSize: 13, fontWeight: '600' }}>Torna a provar</Text>
+          </Pressable>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 export function TrainerSidebar() {
   const path = usePathname();
   const insets = useSafeAreaInsets();
-  const { snapshot, pending, hub, leave, resetDemo, signOutAccount } = useApp();
-  const sync = syncCopy(Boolean(snapshot?.settings.offline), pending, hub);
+  const { snapshot, leave, resetDemo, signOutAccount } = useApp();
   return (
     <View style={{ width: 252, backgroundColor: colors.sidebar, paddingTop: insets.top + 22, paddingBottom: insets.bottom + 18, paddingHorizontal: 16, justifyContent: 'space-between' }}>
       <View style={{ gap: 22 }}>
@@ -109,7 +139,7 @@ export function TrainerSidebar() {
       </View>
       <View style={{ gap: 8, paddingHorizontal: 8 }}>
         <Text style={{ color: colors.sidebarText, fontFamily: font.body, fontSize: 15, fontWeight: '600' }}>{snapshot?.trainers[0]?.name}</Text>
-        <Text style={{ color: sync.color, fontFamily: font.body, fontSize: 13 }}>{sync.label}</Text>
+        <SyncLabel light />
         <Pressable
           accessibilityRole="button"
           onPress={() => {
@@ -134,8 +164,6 @@ export function TrainerSidebar() {
 export function TopBar({ title, items }: { title: string; items?: NavItem[] }) {
   const insets = useSafeAreaInsets();
   const path = usePathname();
-  const { snapshot, pending, hub } = useApp();
-  const sync = syncCopy(Boolean(snapshot?.settings.offline), pending, hub);
   const wide = useWide();
   return (
     <View style={{ paddingTop: insets.top + 10, paddingHorizontal: wide ? 28 : 16, paddingBottom: 10, backgroundColor: colors.paper, borderBottomWidth: 1, borderBottomColor: colors.line, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
@@ -155,7 +183,7 @@ export function TopBar({ title, items }: { title: string; items?: NavItem[] }) {
           })}
         </View>
       ) : (
-        <Text style={{ fontFamily: font.body, color: sync.color, fontSize: 13 }}>{sync.label}</Text>
+        <SyncLabel />
       )}
     </View>
   );
