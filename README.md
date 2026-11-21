@@ -45,11 +45,17 @@ Encara no tens projecte de Supabase. Fes això una vegada:
    - Pestanya **Secrets** → **New repository secret**. Nom exacte: `EXPO_PUBLIC_SUPABASE_ANON_KEY`. Valor: la clau anon public.
 9. Pestanya **Actions** → **Publica la web** → **Run workflow**. Quan acabi en verd, torna a obrir [https://jordiarnau399.github.io/app-entrenaments/](https://jordiarnau399.github.io/app-entrenaments/). Veuràs el formulari d'entrada.
 
+## Vídeos dels exercicis
+
+Si ja tens els comptes, enganxa `supabase/migrations/20261121150000_exercise_videos.sql` sencer a l'editor SQL i prem **Run**. Crea el calaix privat `exercise-videos`. No cal crear-lo a mà a Storage. No hi ha claus noves. En fusionar amb `main`, **Publica la web** s'engega sol.
+
+A la biblioteca, enganxa un enllaç de YouTube, Vimeo o un mp4, o puja un vídeo curt (menys de 40 MB) després de desar l'exercici. El client veu **Com es fa** al telèfon. Si no hi ha vídeo, no surt el botó. A la demostració només funcionen els enllaços.
+
 Per donar d'alta algú:
 
-1. Tu et registres amb **Soc entrenador nou**.
+1. Tu obres [https://jordiarnau399.github.io/app-entrenaments/entrenador](https://jordiarnau399.github.io/app-entrenaments/entrenador) i et registres amb **Soc entrenador nou**.
 2. A **Clients** → **Nou client**, escrius el nom i el correu i prems **Crea el codi**. L'app et mostra un codi de 6 lletres.
-3. El client, al seu telèfon o ordinador, obre la mateixa adreça, tria **Tinc un codi d'invitació** i escriu el seu correu, una contrasenya i el codi.
+3. El client obre [https://jordiarnau399.github.io/app-entrenaments/](https://jordiarnau399.github.io/app-entrenaments/), tria **Tinc un codi d'invitació** i escriu el seu correu, una contrasenya i el codi.
 
 Si més endavant vols la consola en comptes de l'editor SQL: instal·la l'eina de Supabase, enllaça el projecte i executa `supabase db push`. El camí de dalt, enganxant l'SQL, és suficient.
 
@@ -123,8 +129,10 @@ Al mateix navegador pots fer tot el recorregut: estreta la finestra per veure la
 - Gràfics: pes màxim per exercici, percentatge de sessions fetes i esforç al llarg del temps. El client veu els seus; l'entrenador, els de cada client.
 - Mode sense connexió: primer es desa a l'aparell (SQLite) i després se sincronitza. Al navegador, si el motor SQLite no es pot obrir, es fa servir la memòria del navegador.
 - Recordatori diari al telèfon, a l'hora que triï el client. Al navegador només es desa l'hora.
+- Vídeo de demostració per exercici: enllaç o fitxer pujat. El client el reprodueix amb **Com es fa**, també al navegador del telèfon.
+- L’adreça principal és dels clients. L’entrenador entra a `/entrenador`.
 
-Encara no hi són, i el model de dades ja té el lloc per a quan toqui: avisos a l'entrenador quan una sessió es fa o es salta, xat, vídeos dels exercicis, cobraments i alta d'entrenadors pel seu compte. Una sessió passada sense registre compta com a saltada; des del calendari encara es pot anotar.
+Encara no hi són: el xat, avisos a l'entrenador quan una sessió es fa o es salta, i cobraments. Una sessió passada sense registre compta com a saltada; des del calendari encara es pot anotar.
 
 ## Si més endavant vols un servidor
 

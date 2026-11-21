@@ -220,7 +220,7 @@ export class Repository {
       category: input.category.trim() || 'General',
       description: input.description.trim(),
       imageUrl: input.imageUrl?.trim() ? input.imageUrl.trim() : null,
-      videoUrl: existing?.videoUrl ?? null,
+      videoUrl: input.videoUrl?.trim() ? input.videoUrl.trim() : null,
       createdAt: existing?.createdAt ?? stamp,
       updatedAt: stamp,
     };

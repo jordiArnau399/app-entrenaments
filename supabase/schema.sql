@@ -1,5 +1,6 @@
 -- No executis aquest fitxer.
--- L'esquema amb les polítiques de seguretat és:
+-- L'esquema amb les polítiques de seguretat és, en aquest ordre:
 --   supabase/migrations/20261121120000_accounts.sql
+--   supabase/migrations/20261121150000_exercise_videos.sql
 -- La llavor (buida) és:
 --   supabase/seed.sql
