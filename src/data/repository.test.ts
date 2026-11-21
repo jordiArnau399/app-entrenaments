@@ -114,4 +114,32 @@ describe('repositori i cua', () => {
     expect(repo.snapshot.logs.find((log) => log.id === localLog.id)?.rpe).toBe(9);
     expect(remote.data?.logs.find((log) => log.id === localLog.id)?.rpe).toBe(9);
   });
+
+  it('sense servidor, la cua local es tanca en tornar la connexió', async () => {
+    const storage = new MemoryStorage();
+    const seed = buildSeed(new Date(2026, 10, 21));
+    const session = seed.sessions.find((item) => item.clientId === 'cli_pau' && item.date === '2026-11-21')!;
+    seed.settings.offline = true;
+    storage.snapshot = seed;
+    const repo = await Repository.load(storage, null);
+    await repo.logSession({
+      sessionId: session.id,
+      feeling: 'be',
+      rpe: 6,
+      notes: '',
+      exercises: session.exercises.map((exercise) => ({
+        plannedExerciseId: exercise.id,
+        sets: exercise.strength
+          ? [{ weightKg: exercise.strength.weightKg, reps: exercise.strength.reps }]
+          : null,
+        durationSec: exercise.cardio?.durationSec ?? null,
+        distanceM: exercise.cardio?.distanceM ?? null,
+      })),
+    });
+    expect(pendingOps(repo.queue).length).toBeGreaterThan(0);
+    expect(await repo.flush()).toBe('offline');
+    await repo.setOffline(false);
+    expect(pendingOps(repo.queue)).toHaveLength(0);
+    expect(repo.snapshot.logs.find((log) => log.plannedSessionId === session.id)?.syncStatus).toBe('synced');
+  });
 });

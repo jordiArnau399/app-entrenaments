@@ -6,7 +6,23 @@ De moment és per a l'ús intern de Jordi Arnau. El model de dades ja està prep
 
 La mateixa app serveix per al telèfon (iOS i Android, amb Expo Go) i per a l'ordinador. Al navegador, l'entrenador té una vista ampla: menú lateral, taules i gràfics grans.
 
-## Provar-la sense ser programador
+## Obrir-la al navegador, sense instal·lar res
+
+Quan la web estigui publicada, l'adreça és:
+
+**https://jordiarnau399.github.io/app-entrenaments/**
+
+Funciona al navegador de l'ordinador i al del telèfon. No cal Node ni Expo Go. A la primera pantalla tries **Entra com a entrenador** o un client (Pau o Marta). Les dades de la demostració es queden en aquell navegador. L'ordinador i el telèfon no comparteixen els canvis: cadascun té la seva còpia.
+
+El repositori és privat. GitHub només publica GitHub Pages d'un repositori privat si el compte és de pagament (Pro o superior). Amb el pla gratuït, Pages només funciona si el repositori és públic. Els passos, un cop fusionada aquesta branca amb `main`, són:
+
+1. Obre el repositori a GitHub.
+2. Si a **Settings → Pages** no hi ha l'opció **GitHub Actions**, el pla no permet Pages en un repositori privat. Ves a **Settings → General**, al final, **Change repository visibility**, i posa'l **Public**.
+3. **Settings → Pages → Build and deployment → Source**: tria **GitHub Actions**.
+4. Fusiona la pull request. El workflow «Publica la web» s'engega sol. Si ja havies fusionat abans d'activar Pages, obre **Actions → Publica la web → Run workflow**.
+5. Quan el punt verd aparegui, obre l'adreça de dalt.
+
+## Provar-la en local
 
 Necessites dues coses instal·lades una sola vegada:
 
@@ -49,7 +65,7 @@ Tria **Entra com a entrenador**. Ets el Jordi de la demostració: no cal contras
 
 Si el QR no es connecta, al terminal prem `s` per canviar a «Expo Go» si et demana un altre mode, i comprova que no siguis en una Wi-Fi d'invitats que aïlla els aparells.
 
-No hi ha un enllaç públic: l'app s'obre des del teu ordinador. El QR del terminal és la manera d'entrar-hi al telèfon.
+El QR del terminal és la manera d'obrir la versió nativa al telèfon. La versió de navegador pública és l'adreça de dalt.
 
 ## El recorregut de la demostració
 

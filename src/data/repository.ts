@@ -323,7 +323,11 @@ export class Repository {
 
   async flush(): Promise<'synced' | 'offline' | 'local' | 'error'> {
     if (this.snapshot.settings.offline) return 'offline';
-    if (!this.remote || this.flushing) return this.remote ? 'synced' : 'local';
+    if (!this.remote) {
+      await this.settleLocalQueue();
+      return 'local';
+    }
+    if (this.flushing) return 'synced';
     this.flushing = true;
     const hadPending = pendingOps(this.queue).length > 0;
     try {
@@ -361,6 +365,21 @@ export class Repository {
     } finally {
       this.flushing = false;
     }
+  }
+
+  private async settleLocalQueue(): Promise<void> {
+    if (pendingOps(this.queue).length === 0) return;
+    const pendingIds = new Set(pendingOps(this.queue).map((op) => op.entityId));
+    this.queue = this.queue.map((op) =>
+      op.status === 'pending' || op.status === 'failed' ? { ...op, status: 'synced', lastError: null } : op,
+    );
+    this.snapshot = {
+      ...this.snapshot,
+      logs: this.snapshot.logs.map((log) =>
+        log.syncStatus === 'pending' && pendingIds.has(log.id) ? { ...log, syncStatus: 'synced' } : log,
+      ),
+    };
+    await this.persist();
   }
 }
 

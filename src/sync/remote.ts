@@ -1,6 +1,7 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import type { RemoteStore } from '../data/repository';
+import { isLocalDemoHost } from '../domain/host';
 import type { DataCollections } from '../domain/types';
 
 function env(name: string): string | undefined {
@@ -10,14 +11,16 @@ function env(name: string): string | undefined {
 
 export function defaultHubUrl(): string | null {
   const configured = env('EXPO_PUBLIC_DEMO_HUB');
+  if (configured === 'off' || configured === 'false') return null;
   if (configured) return configured.replace(/\/$/, '');
   if (env('EXPO_PUBLIC_SUPABASE_URL') && env('EXPO_PUBLIC_SUPABASE_ANON_KEY')) return null;
+  // The published site keeps data in the browser. The hub is only the machine running `npm start`.
   const hostUri = Constants.expoConfig?.hostUri;
   if (hostUri) {
     const host = hostUri.replace(/^[a-z]+:\/\//i, '').split(':')[0];
-    if (host) return `http://${host}:8787`;
+    if (host && isLocalDemoHost(host)) return `http://${host}:8787`;
   }
-  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location.hostname) {
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && isLocalDemoHost(window.location.hostname)) {
     return `http://${window.location.hostname}:8787`;
   }
   return null;
