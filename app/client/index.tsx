@@ -3,7 +3,7 @@ import { View } from 'react-native';
 import { effectiveStatus } from '../../src/domain/compliance';
 import { capitalize, formatLongDate, todayIso } from '../../src/domain/dates';
 import { FEELING_LABEL, formatCardio, formatStrength } from '../../src/domain/format';
-import { logForSession, sessionOnDate } from '../../src/domain/report';
+import { logForSession, todayAgenda } from '../../src/domain/report';
 import { useApp, useSnapshot } from '../../src/state/store';
 import { Screen, syncCopy } from '../../src/ui/shell';
 import { colors } from '../../src/ui/theme';
@@ -11,17 +11,15 @@ import { Button, Card, ExerciseGlyph, T } from '../../src/ui/ui';
 
 export default function TodayScreen() {
   const snapshot = useSnapshot();
-  const { pending, hub, skipSession } = useApp();
+  const { pending, hub, skipSession, syncNow } = useApp();
   const clientId = snapshot.settings.clientId!;
   const client = snapshot.clients.find((item) => item.id === clientId);
   const today = todayIso();
-  const session = sessionOnDate(snapshot.sessions, snapshot.plans, clientId, today);
+  const agenda = todayAgenda(snapshot.sessions, snapshot.plans, clientId, today);
+  const session = agenda.session;
   const sync = syncCopy(snapshot.settings.offline, pending, hub);
-  const next = snapshot.sessions
-    .filter((item) => item.clientId === clientId && item.date > today && item.status !== 'done')
-    .sort((a, b) => a.date.localeCompare(b.date))[0];
   return (
-    <Screen narrow>
+    <Screen narrow onRefresh={syncNow}>
       <View style={{ gap: 4 }}>
         <T variant="label">{capitalize(formatLongDate(today))}</T>
         <T variant="title">{client ? `Hola, ${client.name.split(' ')[0]}` : 'Avui'}</T>
@@ -29,10 +27,21 @@ export default function TodayScreen() {
       </View>
       {!session ? (
         <Card style={{ gap: 8 }}>
-          <T variant="section">Avui toca descans</T>
-          <T color={colors.muted}>
-            {next ? `La propera sessió és ${formatLongDate(next.date)} · ${next.name}.` : 'No tens més sessions programades.'}
+          <T variant="section">
+            {agenda.plan && agenda.plan.startDate > today ? 'El pla encara no ha començat' : agenda.plan ? 'Avui toca descans' : 'Encara no tens pla'}
           </T>
+          {agenda.plan ? (
+            <T color={colors.muted}>
+              {agenda.plan.name}, del {formatLongDate(agenda.plan.startDate)} al {formatLongDate(agenda.plan.endDate)}.
+            </T>
+          ) : (
+            <T color={colors.muted}>Quan el teu entrenador t’assigni un pla, el veuràs aquí. Estira la pantalla cap avall per actualitzar.</T>
+          )}
+          {agenda.upcoming.map((item) => (
+            <T key={item.id}>
+              {formatLongDate(item.date)} · {item.name}
+            </T>
+          ))}
         </Card>
       ) : (
         <TodayCard

@@ -1,5 +1,5 @@
-import { ReactNode } from 'react';
-import { Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
+import { ReactNode, useState } from 'react';
+import { Pressable, RefreshControl, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import { router, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../state/store';
@@ -32,11 +32,27 @@ export function Boot({ message }: { message?: string | null }) {
   );
 }
 
-export function Screen({ children, narrow = false }: { children: ReactNode; narrow?: boolean }) {
+export function Screen({ children, narrow = false, onRefresh }: { children: ReactNode; narrow?: boolean; onRefresh?: () => Promise<unknown> | unknown }) {
   const wide = useWide();
   const { notice } = useApp();
+  const [refreshing, setRefreshing] = useState(false);
   return (
-    <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: wide ? 32 : 16, paddingBottom: 56, gap: 18, width: '100%', maxWidth: narrow ? 760 : 1120, alignSelf: 'center' }}>
+    <ScrollView
+      style={{ flex: 1 }}
+      keyboardShouldPersistTaps="handled"
+      refreshControl={
+        onRefresh ? (
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              Promise.resolve(onRefresh()).finally(() => setRefreshing(false));
+            }}
+          />
+        ) : undefined
+      }
+      contentContainerStyle={{ padding: wide ? 32 : 16, paddingBottom: 56, gap: 18, width: '100%', maxWidth: narrow ? 760 : 1120, alignSelf: 'center' }}
+    >
       <Notice message={notice} />
       {children}
     </ScrollView>

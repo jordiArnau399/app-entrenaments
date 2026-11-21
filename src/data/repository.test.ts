@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { buildSeed } from '../domain/seed';
 import { pendingOps } from '../domain/sync';
-import type { DataCollections } from '../domain/types';
+import type { DataCollections, Snapshot } from '../domain/types';
+import type { SyncOp } from '../domain/sync';
 import { Repository, type RemoteStore } from './repository';
 import { MemoryStorage } from './storage';
 
@@ -142,4 +143,83 @@ describe('repositori i cua', () => {
     expect(pendingOps(repo.queue)).toHaveLength(0);
     expect(repo.snapshot.logs.find((log) => log.plannedSessionId === session.id)?.syncStatus).toBe('synced');
   });
+
+  it('assignar un pla envia les sessions, no només el pla', async () => {
+    const storage = new MemoryStorage();
+    const seed = buildSeed(new Date(2026, 10, 21));
+    seed.settings.role = 'trainer';
+    seed.settings.mode = 'account';
+    seed.settings.userId = seed.trainers[0].id;
+    seed.settings.trainerId = seed.trainers[0].id;
+    storage.snapshot = seed;
+    const sent: Array<Pick<SyncOp, 'entity' | 'entityId'>> = [];
+    const remote: RemoteStore = {
+      name: 'supabase',
+      async pull() {
+        return collectionsOf(seed);
+      },
+      async push() {
+        throw new Error('el compte no envia la còpia sencera');
+      },
+      async pushPending(_snapshot, ops) {
+        sent.push(...ops.map((op) => ({ entity: op.entity, entityId: op.entityId })));
+      },
+    };
+    const repo = await Repository.load(storage, remote);
+    const planId = await repo.assign({
+      templateId: seed.templates[0].id,
+      clientId: seed.clients[0].id,
+      startDate: '2026-11-23',
+      weeks: 1,
+    });
+    const created = repo.snapshot.sessions.filter((session) => session.planId === planId);
+    expect(created.length).toBeGreaterThan(0);
+    expect(sent.some((op) => op.entity === 'plan' && op.entityId === planId)).toBe(true);
+    expect(created.every((session) => sent.some((op) => op.entity === 'session' && op.entityId === session.id))).toBe(true);
+  });
+
+  it('un pla ja desat sense sessions es reconstrueix i es torna a enviar', async () => {
+    const storage = new MemoryStorage();
+    const seed = buildSeed(new Date(2026, 10, 21));
+    const plan = seed.plans.find((item) => item.clientId === seed.clients[0].id)!;
+    seed.sessions = seed.sessions.filter((session) => session.planId !== plan.id);
+    seed.settings.role = 'trainer';
+    seed.settings.mode = 'account';
+    seed.settings.userId = seed.trainers[0].id;
+    seed.settings.trainerId = seed.trainers[0].id;
+    storage.snapshot = seed;
+    const sent: string[] = [];
+    const remote: RemoteStore = {
+      name: 'supabase',
+      async pull() {
+        return { ...collectionsOf(seed), sessions: seed.sessions.filter((session) => session.planId !== plan.id) };
+      },
+      async push() {
+        return undefined;
+      },
+      async pushPending(_snapshot, ops) {
+        sent.push(...ops.filter((op) => op.entity === 'session').map((op) => op.entityId));
+      },
+    };
+    const repo = await Repository.load(storage, remote);
+    expect(await repo.flush()).toBe('synced');
+    const rebuilt = repo.snapshot.sessions.filter((session) => session.planId === plan.id);
+    expect(rebuilt.length).toBeGreaterThan(0);
+    expect(rebuilt.every((session) => sent.includes(session.id))).toBe(true);
+  });
 });
+
+function collectionsOf(seed: Snapshot): DataCollections {
+  return {
+    trainers: seed.trainers,
+    clients: seed.clients,
+    exercises: seed.exercises,
+    templates: seed.templates,
+    plans: seed.plans,
+    sessions: seed.sessions,
+    logs: seed.logs,
+    messages: seed.messages,
+    notifications: seed.notifications,
+    invites: seed.invites ?? [],
+  };
+}
