@@ -5,17 +5,18 @@ import type { SyncOp } from '../domain/sync';
 export type CloudRow = {
   id: string;
   trainer_id: string;
-  client_id: string | null;
+  /** Només plans, sessions i registres. Exercicis i plantilles no tenen aquesta columna. */
+  client_id?: string | null;
   updated_at: string;
   payload: unknown;
 };
 
 export function exerciseToRow(exercise: Exercise): CloudRow {
-  return { id: exercise.id, trainer_id: exercise.trainerId, client_id: null, updated_at: exercise.updatedAt, payload: exercise };
+  return { id: exercise.id, trainer_id: exercise.trainerId, updated_at: exercise.updatedAt, payload: exercise };
 }
 
 export function templateToRow(template: Template): CloudRow {
-  return { id: template.id, trainer_id: template.trainerId, client_id: null, updated_at: template.updatedAt, payload: template };
+  return { id: template.id, trainer_id: template.trainerId, updated_at: template.updatedAt, payload: template };
 }
 
 export function planToRow(plan: AssignedPlan): CloudRow {
