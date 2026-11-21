@@ -7,6 +7,7 @@ import {
   exerciseToRow,
   inviteToRow,
   logToRow,
+  cloudWriteMethod,
   opIsAllowed,
   planToRow,
   readExercise,
@@ -129,6 +130,15 @@ export async function pushCloud(snapshot: Snapshot, ops: SyncOp[]): Promise<void
     };
     if (!opIsAllowed(actor, op.entity, scope)) {
       throw new Error('new row violates row-level security policy');
+    }
+    const method = cloudWriteMethod(actor, op.entity, op.op);
+    if (method === 'PATCH') {
+      await request(`${table}?id=eq.${encodeURIComponent(op.entityId)}`, {
+        method: 'PATCH',
+        headers: { Prefer: 'return=minimal' },
+        body: JSON.stringify(row),
+      });
+      continue;
     }
     await request(table, {
       method: 'POST',
