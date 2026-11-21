@@ -6,6 +6,7 @@ import { addDays, capitalize, formatLongDate, formatShortDate, WEEKDAYS_CA, toda
 import { FEELING_LABEL, formatCardio, formatStrength, paceSecPerKm } from '../../../src/domain/format';
 import { compareSession, sessionScore } from '../../../src/domain/metrics';
 import { clientReport, logForSession } from '../../../src/domain/report';
+import { completeSessionsFromLogs } from '../../../src/domain/sessionLog';
 import type { ExerciseTarget } from '../../../src/domain/types';
 import { useApp, useSnapshot } from '../../../src/state/store';
 import { PageIntro, Screen, useWide } from '../../../src/ui/shell';
@@ -28,17 +29,18 @@ export default function ClientFollowUp() {
       </Screen>
     );
   }
+  const healed = completeSessionsFromLogs(snapshot.sessions, snapshot.logs);
   const report = clientReport({
     clientId: client.id,
     today,
     plans: snapshot.plans,
-    sessions: snapshot.sessions,
+    sessions: healed,
     logs: snapshot.logs,
     exercises: snapshot.exercises,
   });
   const from = addDays(today, -35);
   const to = addDays(today, 21);
-  const sessions = snapshot.sessions
+  const sessions = healed
     .filter((session) => session.clientId === client.id && session.date >= from && session.date <= to)
     .slice()
     .sort((a, b) => dayDistance(a.date, today) - dayDistance(b.date, today) || b.date.localeCompare(a.date))
@@ -83,8 +85,8 @@ export default function ClientFollowUp() {
                 </View>
               ) : (
                 sessions.map((session) => {
-                  const status = effectiveStatus(session.status, session.date, today);
                   const log = logForSession(snapshot.logs, session.id);
+                  const status = effectiveStatus(log ? 'done' : session.status, session.date, today);
                   const comparison = compareSession(session, log, snapshot.exercises);
                   const score = sessionScore(comparison);
                   const open = openId === session.id;

@@ -1,6 +1,6 @@
 import { addPlanExercise, assignTemplate, fillMissingPlanSessions, pauseOtherPlans, removePlanExercise, updatePlanTarget } from '../domain/assignPlan';
 import { createId, createIdFactory } from '../domain/ids';
-import { createSessionLog, type LogDraftExercise } from '../domain/sessionLog';
+import { completeSessionsFromLogs, createSessionLog, type LogDraftExercise } from '../domain/sessionLog';
 import { buildSeed } from '../domain/seed';
 import { blankSnapshot, snapshotFromCloud, type CloudBundle } from '../domain/account';
 import { createInviteCode } from '../domain/access';
@@ -36,7 +36,32 @@ export class Repository {
       await storage.saveSnapshot(snapshot);
       await storage.saveQueue(queue);
     }
-    return new Repository(storage, snapshot, queue, remote);
+    const repo = new Repository(storage, snapshot, queue, remote);
+    if (repo.repairLoggedSessions()) await repo.persist();
+    return repo;
+  }
+
+  /** Un registre ja desat marca la sessió com a feta i la torna a enviar. */
+  private repairLoggedSessions(): boolean {
+    const sessions = completeSessionsFromLogs(this.snapshot.sessions, this.snapshot.logs);
+    if (sessions === this.snapshot.sessions) return false;
+    const previous = new Map(this.snapshot.sessions.map((session) => [session.id, session.status]));
+    this.snapshot = { ...this.snapshot, sessions };
+    for (const session of sessions) {
+      if (previous.get(session.id) !== 'done' && session.status === 'done') this.requeueSession(session.id);
+    }
+    return true;
+  }
+
+  private requeueSession(id: string): void {
+    const stuck = this.queue.find((op) => op.entity === 'session' && op.entityId === id && op.status !== 'synced');
+    if (stuck) {
+      this.queue = this.queue.map((op) =>
+        op.id === stuck.id ? { ...op, op: 'upsert', status: 'pending', attempts: 0, lastError: null } : op,
+      );
+      return;
+    }
+    this.touchQueue('session', id);
   }
 
   private async persist(): Promise<void> {
@@ -471,6 +496,7 @@ export class Repository {
         this.snapshot = applyPendingDeletes(this.snapshot, this.queue);
       }
       this.restoreMissingSessions(remoteData);
+      this.repairLoggedSessions();
       const pendingIds = new Set(pendingOps(this.queue).map((op) => op.entityId));
       const collections = toCollections(this.snapshot);
       collections.logs = collections.logs.map((log) =>
