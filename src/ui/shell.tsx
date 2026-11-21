@@ -62,7 +62,7 @@ export const clientNav: NavItem[] = [
 export function TrainerSidebar() {
   const path = usePathname();
   const insets = useSafeAreaInsets();
-  const { snapshot, pending, hub, leave, resetDemo } = useApp();
+  const { snapshot, pending, hub, leave, resetDemo, signOutAccount } = useApp();
   const sync = syncCopy(Boolean(snapshot?.settings.offline), pending, hub);
   return (
     <View style={{ width: 252, backgroundColor: colors.sidebar, paddingTop: insets.top + 22, paddingBottom: insets.bottom + 18, paddingHorizontal: 16, justifyContent: 'space-between' }}>
@@ -94,12 +94,22 @@ export function TrainerSidebar() {
       <View style={{ gap: 8, paddingHorizontal: 8 }}>
         <Text style={{ color: colors.sidebarText, fontFamily: font.body, fontSize: 15, fontWeight: '600' }}>{snapshot?.trainers[0]?.name}</Text>
         <Text style={{ color: sync.color, fontFamily: font.body, fontSize: 13 }}>{sync.label}</Text>
-        <Pressable accessibilityRole="button" onPress={() => { leave().then(() => router.replace('/')); }}>
-          <Text style={{ color: colors.sidebarText, fontFamily: font.body, paddingVertical: 6 }}>Canvia de perfil</Text>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => {
+            const leaveApp = snapshot?.settings.mode === 'account' ? signOutAccount : leave;
+            leaveApp().then(() => router.replace('/'));
+          }}
+        >
+          <Text style={{ color: colors.sidebarText, fontFamily: font.body, paddingVertical: 6 }}>
+            {snapshot?.settings.mode === 'account' ? 'Tanca la sessió' : 'Canvia de perfil'}
+          </Text>
         </Pressable>
-        <Pressable accessibilityRole="button" onPress={() => { resetDemo().then(() => router.replace('/')); }}>
-          <Text style={{ color: colors.sidebarMuted, fontFamily: font.body, paddingVertical: 6 }}>Reinicia la demostració</Text>
-        </Pressable>
+        {snapshot?.settings.mode === 'account' ? null : (
+          <Pressable accessibilityRole="button" onPress={() => { resetDemo().then(() => router.replace('/')); }}>
+            <Text style={{ color: colors.sidebarMuted, fontFamily: font.body, paddingVertical: 6 }}>Reinicia la demostració</Text>
+          </Pressable>
+        )}
       </View>
     </View>
   );

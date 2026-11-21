@@ -2,14 +2,17 @@ import { addPlanExercise, assignTemplate, pauseOtherPlans, removePlanExercise, u
 import { createId, createIdFactory } from '../domain/ids';
 import { createSessionLog, type LogDraftExercise } from '../domain/sessionLog';
 import { buildSeed } from '../domain/seed';
+import { blankSnapshot, snapshotFromCloud, type CloudBundle } from '../domain/account';
+import { createInviteCode } from '../domain/access';
 import { applyPendingDeletes, enqueue, pendingOps, toCollections, mergeSnapshots, type SyncOp } from '../domain/sync';
-import type { CardioTarget, DataCollections, Exercise, SessionFeeling, Snapshot, StrengthTarget, Template } from '../domain/types';
+import type { CardioTarget, DataCollections, Exercise, Invite, SessionFeeling, Snapshot, StrengthTarget, Template } from '../domain/types';
 import type { Storage } from './storage';
 
 export interface RemoteStore {
   name: 'hub' | 'supabase';
   pull(): Promise<DataCollections | null>;
   push(data: DataCollections): Promise<void>;
+  pushPending?(snapshot: Snapshot, ops: SyncOp[]): Promise<void>;
 }
 
 export class Repository {
@@ -85,14 +88,16 @@ export class Repository {
     this.snapshot = buildSeed(new Date());
     this.snapshot = {
       ...this.snapshot,
-      settings: { ...this.snapshot.settings, deviceId },
+      settings: { ...this.snapshot.settings, deviceId, mode: 'demo', userId: null },
     };
     this.queue = [];
+    if (this.remote?.name === 'supabase') this.remote = null;
     await this.persist();
     if (this.remote) await this.remote.push(toCollections(this.snapshot));
   }
 
   async addClient(name: string, email: string): Promise<string> {
+    if (this.snapshot.settings.mode === 'account') return this.createInvite(name, email);
     const id = createId('cli');
     const stamp = new Date().toISOString();
     const trainerId = this.snapshot.trainers[0].id;
@@ -107,6 +112,69 @@ export class Repository {
     await this.persist();
     await this.flush();
     return id;
+  }
+
+  async createInvite(name: string, email: string): Promise<string> {
+    const trainerId = this.snapshot.settings.userId ?? this.snapshot.trainers[0]?.id;
+    if (!trainerId) throw new Error('Entra com a entrenador per convidar un client');
+    const stamp = new Date().toISOString();
+    const invite: Invite = {
+      id: createId('inv'),
+      trainerId,
+      name: name.trim() || email.trim(),
+      email: email.trim(),
+      code: createInviteCode(),
+      clientId: null,
+      usedAt: null,
+      createdAt: stamp,
+      updatedAt: stamp,
+    };
+    this.snapshot = {
+      ...this.snapshot,
+      invites: [...(this.snapshot.invites ?? []), invite],
+    };
+    this.touchQueue('invite', invite.id);
+    await this.persist();
+    await this.flush();
+    return invite.code;
+  }
+
+  async adoptAccount(bundle: CloudBundle, userId: string): Promise<void> {
+    const sameUser = this.snapshot.settings.mode === 'account' && this.snapshot.settings.userId === userId;
+    if (!sameUser) {
+      this.snapshot = snapshotFromCloud(bundle, userId, this.snapshot.settings.deviceId || createId('dev'));
+      this.queue = [];
+    } else {
+      const next = snapshotFromCloud(bundle, userId, this.snapshot.settings.deviceId, this.snapshot.settings);
+      this.snapshot = mergeSnapshots(this.snapshot, {
+        trainers: next.trainers,
+        clients: next.clients,
+        exercises: next.exercises,
+        templates: next.templates,
+        plans: next.plans,
+        sessions: next.sessions,
+        logs: next.logs,
+        messages: [],
+        notifications: [],
+        invites: next.invites,
+      });
+      this.snapshot = { ...this.snapshot, settings: next.settings };
+    }
+    await this.persist();
+  }
+
+  async signOutAccount(): Promise<void> {
+    const deviceId = this.snapshot.settings.deviceId || createId('dev');
+    const next = blankSnapshot(deviceId);
+    next.settings.mode = undefined;
+    next.settings.role = null;
+    next.settings.userId = null;
+    next.settings.trainerId = null;
+    next.settings.clientId = null;
+    this.snapshot = next;
+    this.queue = [];
+    this.remote = null;
+    await this.persist();
   }
 
   async saveExercise(input: Omit<Exercise, 'id' | 'createdAt' | 'updatedAt' | 'trainerId'> & { id?: string }): Promise<string> {
@@ -344,7 +412,8 @@ export class Repository {
       collections.logs = collections.logs.map((log) =>
         log.syncStatus === 'pending' && pendingIds.has(log.id) ? { ...log, syncStatus: 'synced' } : log,
       );
-      await this.remote.push(collections);
+      if (this.remote.pushPending) await this.remote.pushPending({ ...this.snapshot, logs: collections.logs }, pendingOps(this.queue));
+      else await this.remote.push(collections);
       this.queue = this.queue.map((op) =>
         op.status === 'pending' || op.status === 'failed' ? { ...op, status: 'synced', lastError: null } : op,
       );

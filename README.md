@@ -22,6 +22,37 @@ El repositori és privat. GitHub només publica GitHub Pages d'un repositori pri
 4. Fusiona la pull request. El workflow «Publica la web» s'engega sol. Si ja havies fusionat abans d'activar Pages, obre **Actions → Publica la web → Run workflow**.
 5. Quan el punt verd aparegui, obre l'adreça de dalt.
 
+## Comptes reals (Supabase)
+
+La web publicada segueix en mode demostració fins que enganxes les claus del núvol. Quan ho facis, la primera pantalla demana correu i contrasenya. Cada entrenador només veu els seus clients. Cada client només veu el seu pla. Això ho controla la base de dades, no només l'app. Al telèfon les dades es guarden primer a l'aparell i després es sincronitzen.
+
+Encara no tens projecte de Supabase. Fes això una vegada:
+
+1. Entra a [https://supabase.com](https://supabase.com) i crea un compte (amb el teu correu n'hi ha prou).
+2. Prem **New project**. Posa-li un nom (per exemple Ritme), una contrasenya de base de dades (guarda-la) i la regió més propera. Espera que el projecte estigui verd.
+3. Al menú esquerre, **Project Settings** (la roda) → **API**. Copia dues coses:
+   - **Project URL** (sembla `https://abcd.supabase.co`)
+   - **anon public** (una clau llarga, dins API Keys)
+4. Al menú esquerre, **SQL Editor** → **New query**. Obre el fitxer `supabase/migrations/20261121120000_accounts.sql` d'aquest projecte, copia'l tot, enganxa'l a l'editor i prem **Run**. Ha de dir que ha anat bé.
+5. Nova consulta. Obre `supabase/seed.sql`, copia'l, enganxa'l i prem **Run**. No crea usuaris: el primer entrenador es registra des de l'app.
+6. Al menú esquerre, **Authentication** → **Sign In / Providers** → **Email**. Desactiva **Confirm email** i desa. Si el deixes activat, cal obrir el correu abans de poder entrar.
+7. **Authentication** → **URL Configuration**.
+   - **Site URL**: `https://jordiarnau399.github.io/app-entrenaments`
+   - **Redirect URLs**: afegeix `https://jordiarnau399.github.io/app-entrenaments/**`
+   - Desa.
+8. A GitHub, obre el repositori **app-entrenaments** → **Settings** → **Secrets and variables** → **Actions**.
+   - Pestanya **Variables** → **New repository variable**. Nom exacte: `EXPO_PUBLIC_SUPABASE_URL`. Valor: el Project URL.
+   - Pestanya **Secrets** → **New repository secret**. Nom exacte: `EXPO_PUBLIC_SUPABASE_ANON_KEY`. Valor: la clau anon public.
+9. Pestanya **Actions** → **Publica la web** → **Run workflow**. Quan acabi en verd, torna a obrir [https://jordiarnau399.github.io/app-entrenaments/](https://jordiarnau399.github.io/app-entrenaments/). Veuràs el formulari d'entrada.
+
+Per donar d'alta algú:
+
+1. Tu et registres amb **Soc entrenador nou**.
+2. A **Clients** → **Nou client**, escrius el nom i el correu i prems **Crea el codi**. L'app et mostra un codi de 6 lletres.
+3. El client, al seu telèfon o ordinador, obre la mateixa adreça, tria **Tinc un codi d'invitació** i escriu el seu correu, una contrasenya i el codi.
+
+Si més endavant vols la consola en comptes de l'editor SQL: instal·la l'eina de Supabase, enllaça el projecte i executa `supabase db push`. El camí de dalt, enganxant l'SQL, és suficient.
+
 ## Provar-la en local
 
 Necessites dues coses instal·lades una sola vegada:

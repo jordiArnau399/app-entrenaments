@@ -8,6 +8,7 @@ export type SyncEntity =
   | 'plan'
   | 'session'
   | 'session_log'
+  | 'invite'
   | 'message'
   | 'notification';
 
@@ -168,6 +169,7 @@ export function mergeSnapshots(local: Snapshot, remote: DataCollections | null):
     plans: latestByUpdatedAt(local.plans, remote.plans),
     sessions: mergeSessions(local.sessions, remote.sessions),
     logs: mergeLogs(local.logs, remote.logs),
+    invites: latestByUpdatedAt(local.invites ?? [], remote.invites ?? []),
     messages: latestByUpdatedAt(local.messages, remote.messages),
     notifications: latestById(local.notifications, remote.notifications),
   };
@@ -187,6 +189,7 @@ const DELETE_COLLECTION: Partial<Record<SyncEntity, keyof DataCollections>> = {
   plan: 'plans',
   session: 'sessions',
   session_log: 'logs',
+  invite: 'invites',
   message: 'messages',
   notification: 'notifications',
 };
@@ -201,6 +204,7 @@ export function applyPendingDeletes(snapshot: Snapshot, queue: SyncOp[]): Snapsh
     plans: snapshot.plans.slice(),
     sessions: snapshot.sessions.slice(),
     logs: snapshot.logs.slice(),
+    invites: (snapshot.invites ?? []).slice(),
     messages: snapshot.messages.slice(),
     notifications: snapshot.notifications.slice(),
   };
@@ -223,6 +227,7 @@ export function toCollections(snapshot: Snapshot): DataCollections {
     plans: snapshot.plans,
     sessions: snapshot.sessions,
     logs: snapshot.logs,
+    invites: snapshot.invites ?? [],
     messages: snapshot.messages,
     notifications: snapshot.notifications,
   };

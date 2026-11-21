@@ -119,6 +119,7 @@ export function buildSeed(now = new Date()): Snapshot {
     logs,
     messages: [],
     notifications: [],
+    invites: [],
     settings: {
       offline: false,
       reminderTime: '08:00',
@@ -126,6 +127,8 @@ export function buildSeed(now = new Date()): Snapshot {
       trainerId: null,
       clientId: null,
       deviceId: 'dev_demo',
+      mode: 'demo',
+      userId: null,
     },
   };
 }

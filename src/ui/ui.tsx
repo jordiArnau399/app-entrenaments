@@ -110,6 +110,7 @@ export function Field({
   placeholder,
   multiline = false,
   keyboard = 'default',
+  secure = false,
 }: {
   label: string;
   value: string;
@@ -117,6 +118,7 @@ export function Field({
   placeholder?: string;
   multiline?: boolean;
   keyboard?: 'default' | 'email-address' | 'numeric' | 'decimal-pad';
+  secure?: boolean;
 }) {
   return (
     <View style={{ gap: 6 }}>
@@ -127,6 +129,8 @@ export function Field({
         placeholder={placeholder}
         placeholderTextColor={colors.muted}
         multiline={multiline}
+        secureTextEntry={secure}
+        autoCapitalize={keyboard === 'email-address' || secure ? 'none' : 'sentences'}
         keyboardType={keyboard}
         style={[styles.input, multiline && { minHeight: 88, textAlignVertical: 'top' }]}
       />

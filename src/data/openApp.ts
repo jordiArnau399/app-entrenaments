@@ -1,17 +1,45 @@
+import { blankSnapshot } from '../domain/account';
+import { createId } from '../domain/ids';
+import { freshAuth, supabaseConfigured } from '../sync/auth';
+import { pullCloud } from '../sync/cloud';
+import { connectRemote } from '../sync/remote';
 import { Repository } from './repository';
 import { openBrowserStorage, openSqliteStorage } from './sqlite';
-import { connectRemote } from '../sync/remote';
+import type { Storage } from './storage';
 
 export async function openAppRepository(): Promise<Repository> {
-  let storage;
-  try {
-    storage = await withTimeout(openSqliteReady(), 12000);
-  } catch (error) {
-    console.warn('SQLite no disponible, es fa servir la memòria del navegador.', error);
-    storage = openBrowserStorage();
+  const storage = await openBestStorage();
+  if (supabaseConfigured()) {
+    const existing = await storage.loadSnapshot();
+    if (!existing) {
+      const blank = blankSnapshot(createId('dev'));
+      blank.settings.mode = undefined;
+      await storage.saveSnapshot(blank);
+      await storage.saveQueue([]);
+    }
   }
   const remote = await connectRemote();
-  return Repository.load(storage, remote);
+  const repo = await Repository.load(storage, remote);
+  if (supabaseConfigured()) {
+    const session = await freshAuth();
+    if (session) {
+      try {
+        await repo.adoptAccount(await pullCloud(), session.userId);
+      } catch (error) {
+        console.warn('No s\'han pogut baixar les dades del núvol.', error);
+      }
+    }
+  }
+  return repo;
+}
+
+async function openBestStorage(): Promise<Storage> {
+  try {
+    return await withTimeout(openSqliteReady(), 12000);
+  } catch (error) {
+    console.warn('SQLite no disponible, es fa servir la memòria del navegador.', error);
+    return openBrowserStorage();
+  }
 }
 
 async function openSqliteReady() {
