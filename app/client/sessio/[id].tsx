@@ -7,7 +7,7 @@ import type { SessionFeeling } from '../../../src/domain/types';
 import { useApp, useSnapshot } from '../../../src/state/store';
 import { Screen, syncCopy } from '../../../src/ui/shell';
 import { colors } from '../../../src/ui/theme';
-import { ExerciseVideoButton } from '../../../src/ui/ExerciseVideo';
+import { ExerciseVideo } from '../../../src/ui/ExerciseVideo';
 import { Button, Card, ExerciseGlyph, Stepper, T, Field, Pill } from '../../../src/ui/ui';
 
 type Draft = { sets: { weightKg: number; reps: number }[]; minutes: number; km: number };
@@ -122,15 +122,23 @@ export default function SessionLogger() {
         </Card>
       ) : exercise && draft ? (
         <Card style={{ gap: 14 }}>
-          <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-            <ExerciseGlyph type={catalog?.type ?? (exercise.cardio ? 'cardio' : 'strength')} />
-            <View style={{ flex: 1 }}>
-              <T variant="section">{catalog?.name ?? 'Exercici'}</T>
-              <T variant="small">Planificat {exercise.strength ? formatStrength(exercise.strength) : exercise.cardio ? formatCardio(exercise.cardio) : '—'}</T>
-            </View>
-          </View>
-          {catalog?.description ? <T color={colors.muted}>{catalog.description}</T> : null}
-          <ExerciseVideoButton videoUrl={catalog?.videoUrl} />
+          <ExerciseVideo videoUrl={catalog?.videoUrl}>
+            {(cue) => (
+              <>
+                <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+                  <ExerciseGlyph type={catalog?.type ?? (exercise.cardio ? 'cardio' : 'strength')} />
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <T variant="section" style={{ flexShrink: 1 }}>{catalog?.name ?? 'Exercici'}</T>
+                      {cue}
+                    </View>
+                    <T variant="small">Planificat {exercise.strength ? formatStrength(exercise.strength) : exercise.cardio ? formatCardio(exercise.cardio) : '—'}</T>
+                  </View>
+                </View>
+                {catalog?.description ? <T color={colors.muted}>{catalog.description}</T> : null}
+              </>
+            )}
+          </ExerciseVideo>
           {exercise.strength
             ? draft.sets.map((set, index) => (
                 <View key={`${exercise.id}-${index}`} style={{ gap: 8 }}>

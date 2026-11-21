@@ -7,7 +7,7 @@ import { logForSession, todayAgenda } from '../../src/domain/report';
 import { useApp, useSnapshot } from '../../src/state/store';
 import { Screen, SyncLabel } from '../../src/ui/shell';
 import { colors } from '../../src/ui/theme';
-import { ExerciseVideoButton } from '../../src/ui/ExerciseVideo';
+import { ExerciseVideo } from '../../src/ui/ExerciseVideo';
 import { Button, Card, ExerciseGlyph, T } from '../../src/ui/ui';
 
 export default function TodayScreen() {
@@ -95,14 +95,20 @@ function TodayCard({
         </T>
       </View>
       {exercises.map((exercise) => (
-        <View key={exercise.id} style={{ flexDirection: 'row', gap: 12, alignItems: 'center', paddingHorizontal: 8 }}>
-          <ExerciseGlyph type={exercise.type} size={48} />
-          <View style={{ flex: 1, gap: 6 }}>
-            <T style={{ fontWeight: '600' }}>{exercise.name}</T>
-            <T variant="small">{exercise.target}</T>
-            <ExerciseVideoButton videoUrl={exercise.videoUrl} />
-          </View>
-        </View>
+        <ExerciseVideo key={exercise.id} videoUrl={exercise.videoUrl}>
+          {(cue) => (
+            <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center', paddingHorizontal: 8 }}>
+              <ExerciseGlyph type={exercise.type} size={48} />
+              <View style={{ flex: 1, gap: 2 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <T style={{ fontWeight: '600', flexShrink: 1 }}>{exercise.name}</T>
+                  {cue}
+                </View>
+                <T variant="small">{exercise.target}</T>
+              </View>
+            </View>
+          )}
+        </ExerciseVideo>
       ))}
       <View style={{ padding: 8, gap: 4 }}>
         {status === 'done' ? (
