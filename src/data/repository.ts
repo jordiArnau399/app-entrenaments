@@ -17,6 +17,7 @@ export interface RemoteStore {
 
 export class Repository {
   flushing = false;
+  private flushChain: Promise<unknown> = Promise.resolve();
 
   constructor(
     private storage: Storage,
@@ -135,11 +136,31 @@ export class Repository {
     };
     this.touchQueue('invite', invite.id);
     await this.persist();
-    await this.flush();
+    if (!this.remote || this.snapshot.settings.offline) {
+      await this.dropInvite(invite.id);
+      throw new Error('Sense connexió: el codi no s’ha desat. Torna-ho a provar.');
+    }
+    const result = await this.flush();
+    const stillPending = pendingOps(this.queue).some((op) => op.entityId === invite.id);
+    if (result !== 'synced' || stillPending) {
+      const queued = this.queue.find((op) => op.entityId === invite.id);
+      await this.dropInvite(invite.id);
+      throw new Error(queued?.lastError || 'No s’ha pogut desar el codi d’invitació');
+    }
     return invite.code;
   }
 
+  private async dropInvite(id: string): Promise<void> {
+    this.snapshot = {
+      ...this.snapshot,
+      invites: (this.snapshot.invites ?? []).filter((item) => item.id !== id),
+    };
+    this.queue = this.queue.filter((op) => op.entityId !== id);
+    await this.persist();
+  }
+
   async adoptAccount(bundle: CloudBundle, userId: string): Promise<void> {
+    const pendingInvites = (this.snapshot.invites ?? []).filter((invite) => !invite.usedAt);
     const sameUser = this.snapshot.settings.mode === 'account' && this.snapshot.settings.userId === userId;
     if (!sameUser) {
       this.snapshot = snapshotFromCloud(bundle, userId, this.snapshot.settings.deviceId || createId('dev'));
@@ -160,7 +181,16 @@ export class Repository {
       });
       this.snapshot = { ...this.snapshot, settings: next.settings };
     }
+    this.keepUnsentInvites(pendingInvites);
     await this.persist();
+  }
+
+  /** Una recàrrega baixa el núvol i, si la cua es creia buida, esborrava el codi abans d'enviar-lo. */
+  private keepUnsentInvites(local: Invite[]): void {
+    const have = new Set((this.snapshot.invites ?? []).map((invite) => invite.id));
+    const missing = local.filter((invite) => !invite.usedAt && !have.has(invite.id));
+    if (missing.length === 0) return;
+    this.snapshot = { ...this.snapshot, invites: [...(this.snapshot.invites ?? []), ...missing] };
   }
 
   async signOutAccount(): Promise<void> {
@@ -399,12 +429,20 @@ export class Repository {
   }
 
   async flush(): Promise<'synced' | 'offline' | 'local' | 'error'> {
+    const run = this.flushChain.then(() => this.flushOnce());
+    this.flushChain = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
+  private async flushOnce(): Promise<'synced' | 'offline' | 'local' | 'error'> {
     if (this.snapshot.settings.offline) return 'offline';
     if (!this.remote) {
       await this.settleLocalQueue();
       return 'local';
     }
-    if (this.flushing) return 'synced';
     this.flushing = true;
     const hadPending = pendingOps(this.queue).length > 0;
     try {
@@ -412,7 +450,13 @@ export class Repository {
       const untouched = pendingOps(this.queue).length === 0;
       if (remoteData && remoteData.clients.length > 0 && untouched) {
         const settings = this.snapshot.settings;
+        const localInvites = this.snapshot.invites ?? [];
         this.snapshot = { ...this.snapshot, ...remoteData, settings };
+        const remoteInviteIds = new Set((remoteData.invites ?? []).map((invite) => invite.id));
+        const missingInvites = localInvites.filter((invite) => !invite.usedAt && !remoteInviteIds.has(invite.id));
+        if (missingInvites.length > 0) {
+          this.snapshot = { ...this.snapshot, invites: [...(this.snapshot.invites ?? []), ...missingInvites] };
+        }
       } else {
         this.snapshot = mergeSnapshots(this.snapshot, remoteData);
         this.snapshot = applyPendingDeletes(this.snapshot, this.queue);
@@ -423,10 +467,12 @@ export class Repository {
       collections.logs = collections.logs.map((log) =>
         log.syncStatus === 'pending' && pendingIds.has(log.id) ? { ...log, syncStatus: 'synced' } : log,
       );
-      if (this.remote.pushPending) await this.remote.pushPending({ ...this.snapshot, logs: collections.logs }, pendingOps(this.queue));
+      const toPush = pendingOps(this.queue);
+      if (this.remote.pushPending) await this.remote.pushPending({ ...this.snapshot, logs: collections.logs }, toPush);
       else await this.remote.push(collections);
+      const pushedIds = new Set(toPush.map((op) => op.id));
       this.queue = this.queue.map((op) =>
-        op.status === 'pending' || op.status === 'failed' ? { ...op, status: 'synced', lastError: null } : op,
+        pushedIds.has(op.id) ? { ...op, status: 'synced', lastError: null } : op,
       );
       this.snapshot = { ...this.snapshot, logs: collections.logs };
       await this.persist();
@@ -469,11 +515,15 @@ export class Repository {
     if (this.snapshot.settings.role !== 'trainer' || !remote || !this.remote?.pushPending) return;
     const remotePlans = new Set(remote.plans.map((plan) => plan.id));
     const remoteSessions = new Set(remote.sessions.map((session) => session.id));
+    const remoteInvites = new Set((remote.invites ?? []).map((invite) => invite.id));
     for (const plan of this.snapshot.plans) {
       if (!remotePlans.has(plan.id)) this.touchQueue('plan', plan.id);
     }
     for (const session of this.snapshot.sessions) {
       if (!remoteSessions.has(session.id)) this.touchQueue('session', session.id);
+    }
+    for (const invite of this.snapshot.invites ?? []) {
+      if (!invite.usedAt && !remoteInvites.has(invite.id)) this.touchQueue('invite', invite.id);
     }
   }
 
