@@ -8,6 +8,7 @@ import type { LogDraftExercise } from '../domain/sessionLog';
 import { configureNotifications, scheduleDailyReminder } from '../sync/notifications';
 import { signIn as authSignIn, signOutLocal, signUpClient, signUpTrainer, supabaseConfigured } from '../sync/auth';
 import { pullCloud } from '../sync/cloud';
+import { subscribeMessages } from '../sync/realtime';
 import { connectRemote, supabaseAccountRemote } from '../sync/remote';
 
 type Hub = 'off' | 'connected' | 'unavailable';
@@ -57,6 +58,8 @@ type AppApi = {
   removeExerciseFromPlan: (planId: string, itemId: string) => Promise<void>;
   logSession: (input: { sessionId: string; exercises: LogDraftExercise[]; feeling: SessionFeeling; rpe: number; notes: string }) => Promise<boolean>;
   skipSession: (sessionId: string) => Promise<void>;
+  sendMessage: (clientId: string, text: string) => Promise<void>;
+  markConversationRead: (clientId: string) => Promise<void>;
 };
 
 const AppContext = createContext<AppApi | null>(null);
@@ -117,9 +120,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     }
     configureNotifications().catch(() => undefined);
-    (async () => {
-      try {
-        const repo = await openAppRepository();
+(async () => {
+        try {
+          const repo = await openAppRepository();
         if (!alive) return;
         repoRef.current = repo;
         apply();
@@ -144,6 +147,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       clearInterval(timer);
     };
   }, [apply, syncNow]);
+
+  useEffect(() => {
+    if (snapshot?.settings.mode !== 'account' || !snapshot.settings.userId) return;
+    return subscribeMessages(() => {
+      syncNow().catch(() => undefined);
+    });
+  }, [snapshot?.settings.mode, snapshot?.settings.userId, syncNow]);
 
   const enterAccount = useCallback(
     async (start: () => Promise<{ userId: string }>): Promise<'trainer' | 'client' | undefined> => {
@@ -235,6 +245,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       removeExerciseFromPlan: (planId, itemId) => run((repo) => repo.removeExerciseFromPlan(planId, itemId)).then(() => undefined),
       logSession: async (input) => Boolean(await run((repo) => repo.logSession(input))),
       skipSession: (sessionId) => run((repo) => repo.skipSession(sessionId)).then(() => undefined),
+      sendMessage: (clientId, text) => run((repo) => repo.sendMessage(clientId, text)).then(() => undefined),
+      markConversationRead: (clientId) => run((repo) => repo.markConversationRead(clientId)).then(() => undefined),
     }),
     [ready, error, notice, snapshot, pending, hub, syncing, run, syncNow, enterAccount],
   );

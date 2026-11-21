@@ -76,8 +76,8 @@ export function supabaseAccountRemote(): RemoteStore {
         plans: snapshot.plans,
         sessions: snapshot.sessions,
         logs: snapshot.logs,
-        messages: [],
-        notifications: [],
+        messages: snapshot.messages,
+        notifications: snapshot.notifications,
         invites: snapshot.invites,
       };
     },

@@ -4,6 +4,7 @@ import { createSessionLog, type LogDraftExercise } from '../domain/sessionLog';
 import { buildSeed } from '../domain/seed';
 import { blankSnapshot, snapshotFromCloud, type CloudBundle } from '../domain/account';
 import { createInviteCode } from '../domain/access';
+import { markThreadRead } from '../domain/chat';
 import { applyPendingDeletes, enqueue, pendingOps, toCollections, mergeSnapshots, type SyncOp } from '../domain/sync';
 import type { CardioTarget, DataCollections, Exercise, Invite, SessionFeeling, Snapshot, StrengthTarget, Template } from '../domain/types';
 import type { Storage } from './storage';
@@ -84,6 +85,16 @@ export class Repository {
   }
 
   async resetDemo(): Promise<void> {
+    while (this.flushing) await new Promise((resolve) => setTimeout(resolve, 30));
+    this.flushing = true;
+    try {
+      await this.resetDemoNow();
+    } finally {
+      this.flushing = false;
+    }
+  }
+
+  private async resetDemoNow(): Promise<void> {
     const deviceId = this.snapshot.settings.deviceId;
     this.snapshot = buildSeed(new Date());
     this.snapshot = {
@@ -154,13 +165,60 @@ export class Repository {
         plans: next.plans,
         sessions: next.sessions,
         logs: next.logs,
-        messages: [],
-        notifications: [],
+        messages: next.messages,
+        notifications: next.notifications,
         invites: next.invites,
       });
       this.snapshot = { ...this.snapshot, settings: next.settings };
     }
     await this.persist();
+  }
+
+  async sendMessage(clientId: string, text: string): Promise<void> {
+    const body = text.trim();
+    if (!body) throw new Error('Escriu un missatge');
+    const trainerId = this.snapshot.settings.trainerId ?? this.snapshot.trainers[0]?.id;
+    if (!trainerId) throw new Error('No hi ha entrenador en aquesta conversa');
+    const role = this.snapshot.settings.role;
+    const senderId = role === 'client' ? this.snapshot.settings.clientId ?? this.snapshot.settings.userId : this.snapshot.settings.userId ?? trainerId;
+    if (!senderId) throw new Error('Torna a entrar per escriure');
+    const conversationClientId = role === 'client' ? senderId : clientId;
+    const recipientId = senderId === trainerId ? conversationClientId : trainerId;
+    const stamp = new Date().toISOString();
+    const message = {
+      id: createId('msg'),
+      trainerId,
+      clientId: conversationClientId,
+      senderId,
+      recipientId,
+      text: body,
+      sentAt: stamp,
+      readAt: null,
+      status: 'sent' as const,
+      syncStatus: 'pending' as const,
+      updatedAt: stamp,
+    };
+    this.snapshot = { ...this.snapshot, messages: [...this.snapshot.messages, message] };
+    this.touchQueue('message', message.id);
+    await this.persist();
+    if (!this.snapshot.settings.offline) await this.flush();
+  }
+
+  async markConversationRead(clientId: string): Promise<void> {
+    const trainerId = this.snapshot.settings.trainerId ?? this.snapshot.trainers[0]?.id;
+    const readerId = this.snapshot.settings.role === 'client'
+      ? this.snapshot.settings.clientId ?? this.snapshot.settings.userId
+      : this.snapshot.settings.userId ?? trainerId;
+    if (!trainerId || !readerId) return;
+    const conversationClientId = this.snapshot.settings.role === 'client' ? readerId : clientId;
+    const stamp = new Date().toISOString();
+    const next = markThreadRead(this.snapshot.messages, readerId, trainerId, conversationClientId, stamp);
+    const changed = next.filter((message, index) => message !== this.snapshot.messages[index] && message.readAt === stamp);
+    if (changed.length === 0) return;
+    this.snapshot = { ...this.snapshot, messages: next };
+    for (const message of changed) this.touchQueue('message', message.id);
+    await this.persist();
+    if (!this.snapshot.settings.offline) await this.flush();
   }
 
   async signOutAccount(): Promise<void> {
@@ -190,7 +248,7 @@ export class Repository {
       category: input.category.trim() || 'General',
       description: input.description.trim(),
       imageUrl: input.imageUrl?.trim() ? input.imageUrl.trim() : null,
-      videoUrl: existing?.videoUrl ?? null,
+      videoUrl: input.videoUrl?.trim() ? input.videoUrl.trim() : null,
       createdAt: existing?.createdAt ?? stamp,
       updatedAt: stamp,
     };
@@ -402,7 +460,8 @@ export class Repository {
       const remoteData = await this.remote.pull();
       const untouched = pendingOps(this.queue).length === 0;
       if (remoteData && remoteData.clients.length > 0 && untouched) {
-        this.snapshot = { ...this.snapshot, ...remoteData };
+        const settings = this.snapshot.settings;
+        this.snapshot = { ...this.snapshot, ...remoteData, settings };
       } else {
         this.snapshot = mergeSnapshots(this.snapshot, remoteData);
         this.snapshot = applyPendingDeletes(this.snapshot, this.queue);

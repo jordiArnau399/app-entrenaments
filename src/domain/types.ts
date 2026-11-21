@@ -161,6 +161,7 @@ export type Message = {
   recipientId: string;
   text: string;
   sentAt: string;
+  readAt: string | null;
   status: 'sent' | 'received' | 'read';
   syncStatus: SyncStatus;
   updatedAt: string;

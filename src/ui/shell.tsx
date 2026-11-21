@@ -2,6 +2,7 @@ import { ReactNode } from 'react';
 import { Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import { router, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { unreadTotal } from '../domain/chat';
 import { useApp } from '../state/store';
 import { colors, font } from './theme';
 import { Mark, Notice, T } from './ui';
@@ -45,9 +46,15 @@ export function Screen({ children, narrow = false }: { children: ReactNode; narr
 
 type NavItem = { href: string; label: string; active: (path: string) => boolean };
 
+export function withUnread(items: NavItem[], href: string, unread: number): NavItem[] {
+  if (unread <= 0) return items;
+  return items.map((item) => (item.href === href ? { ...item, label: `Xat · ${unread}` } : item));
+}
+
 export const trainerNav: NavItem[] = [
   { href: '/entrenador', label: 'Inici', active: (path) => path === '/entrenador' },
   { href: '/entrenador/clients', label: 'Clients', active: (path) => path.startsWith('/entrenador/clients') },
+  { href: '/entrenador/xat', label: 'Xat', active: (path) => path.startsWith('/entrenador/xat') },
   { href: '/entrenador/exercicis', label: 'Exercicis', active: (path) => path.startsWith('/entrenador/exercicis') },
   { href: '/entrenador/plantilles', label: 'Plantilles', active: (path) => path.startsWith('/entrenador/plantilles') },
 ];
@@ -56,6 +63,7 @@ export const clientNav: NavItem[] = [
   { href: '/client', label: 'Avui', active: (path) => path === '/client' },
   { href: '/client/calendari', label: 'Calendari', active: (path) => path.startsWith('/client/calendari') },
   { href: '/client/resultats', label: 'Resultats', active: (path) => path.startsWith('/client/resultats') },
+  { href: '/client/xat', label: 'Xat', active: (path) => path.startsWith('/client/xat') },
   { href: '/client/ajustos', label: 'Ajustos', active: (path) => path.startsWith('/client/ajustos') },
 ];
 
@@ -64,6 +72,8 @@ export function TrainerSidebar() {
   const insets = useSafeAreaInsets();
   const { snapshot, pending, hub, leave, resetDemo, signOutAccount } = useApp();
   const sync = syncCopy(Boolean(snapshot?.settings.offline), pending, hub);
+  const readerId = snapshot?.settings.userId ?? snapshot?.settings.trainerId ?? snapshot?.trainers[0]?.id ?? '';
+  const nav = withUnread(trainerNav, '/entrenador/xat', unreadTotal(snapshot?.messages ?? [], readerId));
   return (
     <View style={{ width: 252, backgroundColor: colors.sidebar, paddingTop: insets.top + 22, paddingBottom: insets.bottom + 18, paddingHorizontal: 16, justifyContent: 'space-between' }}>
       <View style={{ gap: 22 }}>
@@ -75,7 +85,7 @@ export function TrainerSidebar() {
           </View>
         </View>
         <View style={{ gap: 4 }}>
-          {trainerNav.map((item) => {
+          {nav.map((item) => {
             const active = item.active(path);
             return (
               <Pressable
@@ -132,7 +142,7 @@ export function TopBar({ title, items }: { title: string; items?: NavItem[] }) {
           {items.map((item) => {
             const active = item.active(path);
             return (
-              <Pressable key={item.href} onPress={() => router.push(item.href as never)} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: active ? colors.ink : 'transparent' }}>
+              <Pressable key={item.href} accessibilityRole="button" onPress={() => router.push(item.href as never)} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: active ? colors.ink : 'transparent' }}>
                 <Text style={{ fontFamily: font.body, fontWeight: '600', color: active ? colors.surface : colors.ink }}>{item.label}</Text>
               </Pressable>
             );

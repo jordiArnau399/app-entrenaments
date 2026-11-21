@@ -62,6 +62,7 @@ export default function ClientFollowUp() {
           ? `${report.activePlan.name}, del ${formatLongDate(report.activePlan.startDate)} al ${formatLongDate(report.activePlan.endDate)}.`
           : 'Aquest client encara no té un pla actiu.'}
       </T>
+      <Button label="Obre el xat" tone="secondary" onPress={() => router.push(`/entrenador/xat/${client.id}`)} />
       <View style={{ flexDirection: 'row', gap: 8 }}>
         <Pressable onPress={() => setTab('seguiment')}>
           <Pill label="Seguiment" tone={tab === 'seguiment' ? 'accent' : 'neutral'} />

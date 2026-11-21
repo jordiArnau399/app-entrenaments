@@ -1,5 +1,5 @@
 import { canAccess, type Actor } from '../domain/access';
-import type { AssignedPlan, Exercise, Invite, PlannedSession, SessionLog, Template } from '../domain/types';
+import type { AssignedPlan, Exercise, Invite, Message, PlannedSession, SessionLog, Template } from '../domain/types';
 import type { SyncOp } from '../domain/sync';
 
 export type CloudRow = {
@@ -28,6 +28,62 @@ export function sessionToRow(session: PlannedSession): CloudRow {
 
 export function logToRow(log: SessionLog): CloudRow {
   return { id: log.id, trainer_id: log.trainerId, client_id: log.clientId, updated_at: log.updatedAt, payload: log };
+}
+
+export function messageToRow(message: Message): Record<string, unknown> {
+  return {
+    id: message.id,
+    trainer_id: message.trainerId,
+    client_id: message.clientId,
+    sender_id: message.senderId,
+    body: message.text,
+    created_at: message.sentAt,
+    read_at: message.readAt,
+    updated_at: message.updatedAt,
+  };
+}
+
+/** Un missatge nou s'insereix. Marcar-lo llegit és un pedaç, perquè l'alta exigeix read_at buit. */
+export function messageWrite(row: Record<string, unknown>, actorUserId: string): { method: 'POST' | 'PATCH'; path: string; body: Record<string, unknown>; prefer: string } | null {
+  const senderId = String(row.sender_id ?? '');
+  if (row.read_at && senderId !== actorUserId) {
+    return {
+      method: 'PATCH',
+      path: `messages?id=eq.${encodeURIComponent(String(row.id))}`,
+      body: { read_at: row.read_at },
+      prefer: 'return=minimal',
+    };
+  }
+  if (!row.read_at && senderId === actorUserId) {
+    return { method: 'POST', path: 'messages', body: row, prefer: 'resolution=ignore-duplicates,return=minimal' };
+  }
+  return null;
+}
+
+export function readMessage(row: {
+  id: string;
+  trainer_id: string;
+  client_id: string;
+  sender_id: string;
+  body: string;
+  created_at: string;
+  read_at: string | null;
+  updated_at: string;
+}): Message {
+  const readAt = row.read_at;
+  return {
+    id: row.id,
+    trainerId: row.trainer_id,
+    clientId: row.client_id,
+    senderId: row.sender_id,
+    recipientId: row.sender_id === row.trainer_id ? row.client_id : row.trainer_id,
+    text: row.body,
+    sentAt: row.created_at,
+    readAt,
+    status: readAt ? 'read' : 'sent',
+    syncStatus: 'synced',
+    updatedAt: row.updated_at,
+  };
 }
 
 export function inviteToRow(invite: Invite): Record<string, unknown> {
@@ -93,19 +149,26 @@ export function readInvite(row: {
   };
 }
 
-const TABLE: Partial<Record<SyncOp['entity'], 'exercise' | 'template' | 'plan' | 'session' | 'session_log' | 'invite'>> = {
+const TABLE: Partial<Record<SyncOp['entity'], 'exercise' | 'template' | 'plan' | 'session' | 'session_log' | 'invite' | 'message'>> = {
   exercise: 'exercise',
   template: 'template',
   plan: 'plan',
   session: 'session',
   session_log: 'session_log',
   invite: 'invite',
+  message: 'message',
 };
 
 /** No s'envia al núvol una fila que la política rebutjaria. */
-export function opIsAllowed(actor: Actor, entity: SyncOp['entity'], row: { trainerId?: string | null; clientId?: string | null; usedAt?: string | null }): boolean {
+export function opIsAllowed(
+  actor: Actor,
+  entity: SyncOp['entity'],
+  row: { trainerId?: string | null; clientId?: string | null; senderId?: string | null; usedAt?: string | null },
+): boolean {
   const table = TABLE[entity];
   if (!table) return false;
-  const action = 'insert';
-  return canAccess(actor, action, table, row);
+  if (table === 'message') {
+    return canAccess(actor, 'insert', table, row) || canAccess(actor, 'update', table, row);
+  }
+  return canAccess(actor, 'insert', table, row);
 }

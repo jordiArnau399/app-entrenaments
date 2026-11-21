@@ -7,6 +7,7 @@ import type {
   Client,
   Exercise,
   ExerciseTarget,
+  Message,
   PlanDay,
   SessionFeeling,
   SessionLog,
@@ -117,7 +118,7 @@ export function buildSeed(now = new Date()): Snapshot {
     plans,
     sessions,
     logs,
-    messages: [],
+    messages: demoMessages(nowStamp),
     notifications: [],
     invites: [],
     settings: {
@@ -131,6 +132,51 @@ export function buildSeed(now = new Date()): Snapshot {
       userId: null,
     },
   };
+}
+
+function demoMessages(stamp: string): Message[] {
+  const older = '2026-11-20T09:15:00.000Z';
+  return [
+    {
+      id: 'msg_marta_1',
+      trainerId: TRAINER_ID,
+      clientId: CLIENT_MARTA,
+      senderId: CLIENT_MARTA,
+      recipientId: TRAINER_ID,
+      text: 'Bon dia. Avui puc fer la força a la tarda?',
+      sentAt: older,
+      readAt: null,
+      status: 'sent',
+      syncStatus: 'synced',
+      updatedAt: older,
+    },
+    {
+      id: 'msg_marta_2',
+      trainerId: TRAINER_ID,
+      clientId: CLIENT_MARTA,
+      senderId: TRAINER_ID,
+      recipientId: CLIENT_MARTA,
+      text: 'Sí. Mantén els pesos i atura’t si el ritme es dispara.',
+      sentAt: '2026-11-20T09:22:00.000Z',
+      readAt: '2026-11-20T09:30:00.000Z',
+      status: 'read',
+      syncStatus: 'synced',
+      updatedAt: '2026-11-20T09:30:00.000Z',
+    },
+    {
+      id: 'msg_pau_1',
+      trainerId: TRAINER_ID,
+      clientId: CLIENT_PAU,
+      senderId: TRAINER_ID,
+      recipientId: CLIENT_PAU,
+      text: 'Com ha anat la sessió? El genoll esquerre, bé?',
+      sentAt: stamp,
+      readAt: null,
+      status: 'sent',
+      syncStatus: 'synced',
+      updatedAt: stamp,
+    },
+  ];
 }
 
 function logsFor(

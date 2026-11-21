@@ -10,12 +10,13 @@ export type Actor = {
   trainerId: string;
 };
 
-export type AccessTable = 'profile' | 'invite' | 'exercise' | 'template' | 'plan' | 'session' | 'session_log';
+export type AccessTable = 'profile' | 'invite' | 'exercise' | 'template' | 'plan' | 'session' | 'session_log' | 'message';
 
 export type AccessRow = {
   ownerId?: string | null;
   trainerId?: string | null;
   clientId?: string | null;
+  senderId?: string | null;
   usedAt?: string | null;
 };
 
@@ -55,6 +56,17 @@ export function canAccess(actor: Actor, action: AccessAction, table: AccessTable
     if (action === 'select') return ownTrainer || row.clientId === actor.userId;
     if (action === 'insert' || action === 'delete') return ownTrainer && row.clientId != null;
     return ownTrainer || ownClient;
+  }
+
+  if (table === 'message') {
+    const participant =
+      (actor.role === 'trainer' && row.trainerId === actor.userId && row.clientId != null) ||
+      (actor.role === 'client' && row.clientId === actor.userId && row.trainerId === actor.trainerId);
+    if (!participant) return false;
+    if (action === 'select') return true;
+    if (action === 'insert') return row.senderId === actor.userId;
+    if (action === 'update') return row.senderId != null && row.senderId !== actor.userId;
+    return false;
   }
 
   if (action === 'select') return ownTrainer || row.clientId === actor.userId;

@@ -21,6 +21,18 @@ CREATE TABLE IF NOT EXISTS sync_queue (
 );
 `;
 
+let chain: Promise<unknown> = Promise.resolve();
+
+/** Una sola operació de SQLite alhora. Dues transaccions juntes fan fallar wa-sqlite. */
+function queued<T>(work: () => Promise<T>): Promise<T> {
+  const run = chain.then(work, work);
+  chain = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
 type QueueRow = {
   id: string;
   entity: SyncOp['entity'];
@@ -38,18 +50,22 @@ export async function openSqliteStorage(): Promise<Storage> {
   await db.execAsync(SCHEMA);
   return {
     async loadSnapshot() {
-      const row = await db.getFirstAsync<{ value: string }>('SELECT value FROM kv WHERE key = ?', 'snapshot');
-      return row ? (JSON.parse(row.value) as Snapshot) : null;
+      return queued(async () => {
+        const row = await db.getFirstAsync<{ value: string }>('SELECT value FROM kv WHERE key = ?', 'snapshot');
+        return row ? (JSON.parse(row.value) as Snapshot) : null;
+      });
     },
     async saveSnapshot(snapshot) {
-      await db.runAsync(
-        'INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
-        'snapshot',
-        JSON.stringify(snapshot),
+      await queued(() =>
+        db.runAsync(
+          'INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+          'snapshot',
+          JSON.stringify(snapshot),
+        ),
       );
     },
     async loadQueue() {
-      const rows = await db.getAllAsync<QueueRow>('SELECT * FROM sync_queue ORDER BY created_at ASC');
+      const rows = await queued(() => db.getAllAsync<QueueRow>('SELECT * FROM sync_queue ORDER BY created_at ASC'));
       return rows.map((row) => ({
         id: row.id,
         entity: row.entity,
@@ -63,7 +79,7 @@ export async function openSqliteStorage(): Promise<Storage> {
       }));
     },
     async saveQueue(queue) {
-      await db.withTransactionAsync(async () => {
+      await queued(async () => {
         await db.runAsync('DELETE FROM sync_queue');
         for (const op of queue) {
           await db.runAsync(

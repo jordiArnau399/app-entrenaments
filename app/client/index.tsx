@@ -7,6 +7,7 @@ import { logForSession, sessionOnDate } from '../../src/domain/report';
 import { useApp, useSnapshot } from '../../src/state/store';
 import { Screen, syncCopy } from '../../src/ui/shell';
 import { colors } from '../../src/ui/theme';
+import { ExerciseVideoButton } from '../../src/ui/ExerciseVideo';
 import { Button, Card, ExerciseGlyph, T } from '../../src/ui/ui';
 
 export default function TodayScreen() {
@@ -49,6 +50,7 @@ export default function TodayScreen() {
               name: exercise?.name ?? 'Exercici',
               type: exercise?.type ?? (item.cardio ? 'cardio' : 'strength'),
               target: item.strength ? formatStrength(item.strength) : item.cardio ? formatCardio(item.cardio) : '—',
+              videoUrl: exercise?.videoUrl ?? null,
             };
           })}
         />
@@ -68,7 +70,7 @@ function TodayCard({
 }: {
   name: string;
   status: 'pending' | 'done' | 'skipped';
-  exercises: { id: string; name: string; type: 'strength' | 'cardio'; target: string }[];
+  exercises: { id: string; name: string; type: 'strength' | 'cardio'; target: string; videoUrl: string | null }[];
   feeling?: keyof typeof FEELING_LABEL;
   rpe?: number;
   onStart: () => void;
@@ -87,9 +89,10 @@ function TodayCard({
       {exercises.map((exercise) => (
         <View key={exercise.id} style={{ flexDirection: 'row', gap: 12, alignItems: 'center', paddingHorizontal: 8 }}>
           <ExerciseGlyph type={exercise.type} size={48} />
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1, gap: 6 }}>
             <T style={{ fontWeight: '600' }}>{exercise.name}</T>
             <T variant="small">{exercise.target}</T>
+            <ExerciseVideoButton videoUrl={exercise.videoUrl} />
           </View>
         </View>
       ))}

@@ -170,7 +170,7 @@ export function mergeSnapshots(local: Snapshot, remote: DataCollections | null):
     sessions: mergeSessions(local.sessions, remote.sessions),
     logs: mergeLogs(local.logs, remote.logs),
     invites: latestByUpdatedAt(local.invites ?? [], remote.invites ?? []),
-    messages: latestByUpdatedAt(local.messages, remote.messages),
+    messages: latestByUpdatedAt(local.messages ?? [], remote.messages ?? []),
     notifications: latestById(local.notifications, remote.notifications),
   };
 }

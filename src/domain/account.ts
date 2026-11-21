@@ -1,4 +1,4 @@
-import type { AssignedPlan, Client, DataCollections, Exercise, Invite, PlannedSession, SessionLog, Settings, Snapshot, Template, Trainer } from './types';
+import type { AssignedPlan, Client, DataCollections, Exercise, Invite, Message, PlannedSession, SessionLog, Settings, Snapshot, Template, Trainer } from './types';
 
 export type ProfileRecord = {
   id: string;
@@ -19,6 +19,7 @@ export type CloudBundle = {
   plans: AssignedPlan[];
   sessions: PlannedSession[];
   logs: SessionLog[];
+  messages: Message[];
 };
 
 export function blankSnapshot(deviceId: string): Snapshot {
@@ -65,7 +66,7 @@ export function snapshotFromCloud(bundle: CloudBundle, userId: string, deviceId:
     plans: bundle.plans,
     sessions: bundle.sessions,
     logs: bundle.logs,
-    messages: [],
+    messages: bundle.messages,
     notifications: [],
     invites: me.role === 'trainer' ? bundle.invites : [],
     settings: {

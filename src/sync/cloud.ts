@@ -7,11 +7,14 @@ import {
   exerciseToRow,
   inviteToRow,
   logToRow,
+  messageToRow,
+  messageWrite,
   opIsAllowed,
   planToRow,
   readExercise,
   readInvite,
   readLog,
+  readMessage,
   readPlan,
   readSession,
   readTemplate,
@@ -60,7 +63,7 @@ function actorOf(snapshot: Snapshot): Actor | null {
 }
 
 export async function pullCloud(): Promise<CloudBundle> {
-  const [profiles, invites, exercises, templates, plans, sessions, logs] = await Promise.all([
+  const [profiles, invites, exercises, templates, plans, sessions, logs, messages] = await Promise.all([
     request<Array<Record<string, string | null>>>('profiles?select=*'),
     request<InviteRow[]>('invites?select=*'),
     request<CloudRow[]>('exercises?select=*'),
@@ -68,6 +71,7 @@ export async function pullCloud(): Promise<CloudBundle> {
     request<CloudRow[]>('plans?select=*'),
     request<CloudRow[]>('sessions?select=*'),
     request<CloudRow[]>('session_logs?select=*'),
+    request<Parameters<typeof readMessage>[0][]>('messages?select=*&order=created_at.asc').catch(() => []),
   ]);
   return {
     profiles: (profiles ?? []).map(readProfile),
@@ -77,6 +81,7 @@ export async function pullCloud(): Promise<CloudBundle> {
     plans: (plans ?? []).map(readPlan),
     sessions: (sessions ?? []).map(readSession),
     logs: (logs ?? []).map(readLog),
+    messages: (messages ?? []).map(readMessage),
   };
 }
 
@@ -100,6 +105,7 @@ const SQL_TABLE: Partial<Record<SyncOp['entity'], string>> = {
   session: 'sessions',
   session_log: 'session_logs',
   invite: 'invites',
+  message: 'messages',
 };
 
 export async function pushCloud(snapshot: Snapshot, ops: SyncOp[]): Promise<void> {
@@ -117,9 +123,20 @@ export async function pushCloud(snapshot: Snapshot, ops: SyncOp[]): Promise<void
     const scope = {
       trainerId: String(row.trainer_id ?? ''),
       clientId: (row.client_id as string | null) ?? null,
+      senderId: (row.sender_id as string | null) ?? null,
       usedAt: (row.used_at as string | null) ?? null,
     };
     if (!opIsAllowed(actor, op.entity, scope)) continue;
+    if (op.entity === 'message') {
+      const write = messageWrite(row, actor.userId);
+      if (!write) continue;
+      await request(write.path, {
+        method: write.method,
+        headers: { Prefer: write.prefer },
+        body: JSON.stringify(write.body),
+      });
+      continue;
+    }
     await request(table, {
       method: 'POST',
       headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
@@ -152,6 +169,10 @@ function rowFor(snapshot: Snapshot, op: SyncOp): Record<string, unknown> | null 
   if (op.entity === 'invite') {
     const item = (snapshot.invites ?? []).find((entry) => entry.id === op.entityId);
     return item ? inviteToRow(item) : null;
+  }
+  if (op.entity === 'message') {
+    const item = snapshot.messages.find((entry) => entry.id === op.entityId);
+    return item ? messageToRow(item) : null;
   }
   return null;
 }
