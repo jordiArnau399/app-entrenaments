@@ -103,10 +103,19 @@ const TABLE: Partial<Record<SyncOp['entity'], 'exercise' | 'template' | 'plan' |
   invite: 'invite',
 };
 
-/** No s'envia al núvol una fila que la política rebutjaria. */
+/**
+ * Un canvi es pot enviar si la política deixa inserir-lo o actualitzar-lo.
+ * El client no crea sessions, però sí que en marca de fetes: això és un pedaç, no una alta.
+ */
 export function opIsAllowed(actor: Actor, entity: SyncOp['entity'], row: { trainerId?: string | null; clientId?: string | null; usedAt?: string | null }): boolean {
   const table = TABLE[entity];
   if (!table) return false;
-  const action = 'insert';
-  return canAccess(actor, action, table, row);
+  return canAccess(actor, 'insert', table, row) || canAccess(actor, 'update', table, row);
+}
+
+/** El client actualitza la sessió amb PATCH. Un POST d'alta el rebutjaria la política. */
+export function cloudWriteMethod(actor: Actor, entity: SyncOp['entity'], op: SyncOp['op']): 'POST' | 'PATCH' | 'DELETE' {
+  if (op === 'delete') return 'DELETE';
+  if (actor.role === 'client' && entity === 'session') return 'PATCH';
+  return 'POST';
 }

@@ -5,26 +5,25 @@ import { capitalize, formatLongDate, todayIso } from '../../src/domain/dates';
 import { FEELING_LABEL, formatCardio, formatStrength } from '../../src/domain/format';
 import { logForSession, todayAgenda } from '../../src/domain/report';
 import { useApp, useSnapshot } from '../../src/state/store';
-import { Screen, syncCopy } from '../../src/ui/shell';
+import { Screen, SyncLabel } from '../../src/ui/shell';
 import { colors } from '../../src/ui/theme';
 import { ExerciseVideoButton } from '../../src/ui/ExerciseVideo';
 import { Button, Card, ExerciseGlyph, T } from '../../src/ui/ui';
 
 export default function TodayScreen() {
   const snapshot = useSnapshot();
-  const { pending, hub, skipSession, syncNow } = useApp();
+  const { skipSession, syncNow } = useApp();
   const clientId = snapshot.settings.clientId!;
   const client = snapshot.clients.find((item) => item.id === clientId);
   const today = todayIso();
   const agenda = todayAgenda(snapshot.sessions, snapshot.plans, clientId, today);
   const session = agenda.session;
-  const sync = syncCopy(snapshot.settings.offline, pending, hub);
   return (
     <Screen narrow onRefresh={syncNow}>
       <View style={{ gap: 4 }}>
         <T variant="label">{capitalize(formatLongDate(today))}</T>
         <T variant="title">{client ? `Hola, ${client.name.split(' ')[0]}` : 'Avui'}</T>
-        <T variant="small" color={sync.color}>{sync.label}</T>
+        <SyncLabel />
       </View>
       {!session ? (
         <Card style={{ gap: 8 }}>

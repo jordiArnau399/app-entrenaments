@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Actor } from '../domain/access';
-import { exerciseToRow, logToRow, opIsAllowed, planToRow, templateToRow } from './rows';
+import { cloudWriteMethod, exerciseToRow, logToRow, opIsAllowed, planToRow, templateToRow } from './rows';
 import type { AssignedPlan, Exercise, SessionLog, Template } from '../domain/types';
 
 const client: Actor = { userId: 'client-1', role: 'client', trainerId: 'trainer-1' };
@@ -70,5 +70,31 @@ describe('files que viatgen al núvol', () => {
     expect(exerciseToRow(exercise)).not.toHaveProperty('client_id');
     expect(templateToRow(template)).not.toHaveProperty('client_id');
     expect(exerciseToRow(exercise).trainer_id).toBe('trainer-1');
+    expect(logToRow({
+      id: 'log-1',
+      plannedSessionId: 'ses-1',
+      clientId: 'client-1',
+      trainerId: 'trainer-1',
+      startedAt: '2026-11-21T18:00:00.000Z',
+      endedAt: '2026-11-21T19:00:00.000Z',
+      feeling: 'be',
+      rpe: 7,
+      notes: '',
+      exercises: [],
+      syncStatus: 'pending',
+      deviceId: 'dev',
+      updatedAt: '2026-11-21T19:00:00.000Z',
+    })).toMatchObject({ id: 'log-1', trainer_id: 'trainer-1', client_id: 'client-1' });
+  });
+
+  it('el client pot actualitzar la seva sessió i crear el registre, no al revés', () => {
+    const row = { trainerId: 'trainer-1', clientId: 'client-1' };
+    expect(opIsAllowed(client, 'session', row)).toBe(true);
+    expect(opIsAllowed(client, 'session_log', row)).toBe(true);
+    expect(opIsAllowed(trainer, 'session_log', row)).toBe(false);
+    expect(opIsAllowed(trainer, 'session', row)).toBe(true);
+    expect(cloudWriteMethod(client, 'session', 'upsert')).toBe('PATCH');
+    expect(cloudWriteMethod(trainer, 'session', 'upsert')).toBe('POST');
+    expect(cloudWriteMethod(client, 'session_log', 'upsert')).toBe('POST');
   });
 });
