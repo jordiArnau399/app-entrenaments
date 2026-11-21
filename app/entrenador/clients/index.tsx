@@ -18,7 +18,11 @@ export default function ClientsScreen() {
   return (
     <Screen>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-        <PageIntro eyebrow="Cartera" title="Clients" detail="Cada client està lligat a un sol entrenador." />
+        <PageIntro
+          eyebrow="Cartera"
+          title="Clients"
+          detail={snapshot.settings.mode === 'account' ? 'Convida un client amb un codi. Només veuràs els teus.' : 'Cada client està lligat a un sol entrenador.'}
+        />
         <Button label={open ? 'Tanca' : 'Nou client'} tone="secondary" onPress={() => setOpen((value) => !value)} />
       </View>
       {open ? (
@@ -26,7 +30,7 @@ export default function ClientsScreen() {
           <Field label="Nom" value={name} onChangeText={setName} placeholder="Nom i cognoms" />
           <Field label="Correu" value={email} onChangeText={setEmail} placeholder="nom@exemple.cat" keyboard="email-address" />
           <Button
-            label="Afegeix el client"
+            label={snapshot.settings.mode === 'account' ? 'Crea el codi' : 'Afegeix el client'}
             disabled={!name.trim()}
             onPress={() => {
               addClient(name, email).then(() => {
@@ -36,7 +40,11 @@ export default function ClientsScreen() {
               });
             }}
           />
-          <T variant="small">En la demostració entra sense contrasenya, des de la pantalla inicial.</T>
+          <T variant="small">
+            {snapshot.settings.mode === 'account'
+              ? 'El codi apareix aquí dalt. El client el escriu en crear el compte. El correu només et recorda de qui és.'
+              : 'En la demostració el client entra sense contrasenya, des de la pantalla inicial.'}
+          </T>
         </Card>
       ) : null}
       <Card style={{ padding: 0, overflow: 'hidden' }}>
@@ -46,6 +54,18 @@ export default function ClientsScreen() {
           <T variant="label" style={{ flex: 0.7 }}>Compliment</T>
           <T variant="label" style={{ flex: 0.7 }}>Última</T>
         </View>
+        {(snapshot.invites ?? []).filter((invite) => !invite.usedAt).map((invite) => (
+          <Card key={invite.id}>
+            <View style={{ gap: 4 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
+                <T style={{ fontWeight: '600' }}>{invite.name || invite.email || 'Invitació'}</T>
+                <Pill label="Pendent" tone="warn" />
+              </View>
+              <T>Codi {invite.code}</T>
+              {invite.email ? <T variant="small">{invite.email}</T> : null}
+            </View>
+          </Card>
+        ))}
         {snapshot.clients.map((client) => {
           const report = clientReport({
             clientId: client.id,

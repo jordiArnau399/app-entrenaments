@@ -177,6 +177,18 @@ export type AppNotification = {
   read: boolean;
 };
 
+export type Invite = {
+  id: string;
+  trainerId: string;
+  name: string;
+  email: string;
+  code: string;
+  clientId: string | null;
+  usedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type Settings = {
   offline: boolean;
   reminderTime: string;
@@ -184,6 +196,9 @@ export type Settings = {
   trainerId: string | null;
   clientId: string | null;
   deviceId: string;
+  /** Sense Supabase, la demostració. Amb compte, les dades del núvol. */
+  mode?: 'demo' | 'account';
+  userId?: string | null;
 };
 
 export type DataCollections = {
@@ -196,6 +211,7 @@ export type DataCollections = {
   logs: SessionLog[];
   messages: Message[];
   notifications: AppNotification[];
+  invites: Invite[];
 };
 
 export type Snapshot = DataCollections & {

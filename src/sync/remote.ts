@@ -1,8 +1,11 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import type { RemoteStore } from '../data/repository';
+import { snapshotFromCloud } from '../domain/account';
 import { isLocalDemoHost } from '../domain/host';
 import type { DataCollections } from '../domain/types';
+import { freshAuth, supabaseConfigured } from './auth';
+import { pullCloud, pushCloud } from './cloud';
 
 function env(name: string): string | undefined {
   const value = process.env[name];
@@ -57,35 +60,41 @@ export function hubRemote(baseUrl: string): RemoteStore {
   };
 }
 
-export function supabaseRemote(baseUrl: string, anonKey: string): RemoteStore {
-  const headers = {
-    apikey: anonKey,
-    Authorization: `Bearer ${anonKey}`,
-    'Content-Type': 'application/json',
-  };
+export function supabaseAccountRemote(): RemoteStore {
   return {
     name: 'supabase',
     async pull() {
-      const response = await fetchJson(`${baseUrl}/rest/v1/ritme_state?id=eq.demo&select=payload`, { headers });
-      if (!response.ok) throw new Error('Supabase ha rebutjat la lectura');
-      const rows = (await response.json()) as { payload?: DataCollections }[];
-      return rows[0]?.payload ?? null;
+      const session = await freshAuth();
+      if (!session) return null;
+      const bundle = await pullCloud();
+      const snapshot = snapshotFromCloud(bundle, session.userId, 'cloud');
+      return {
+        trainers: snapshot.trainers,
+        clients: snapshot.clients,
+        exercises: snapshot.exercises,
+        templates: snapshot.templates,
+        plans: snapshot.plans,
+        sessions: snapshot.sessions,
+        logs: snapshot.logs,
+        messages: [],
+        notifications: [],
+        invites: snapshot.invites,
+      };
     },
-    async push(data) {
-      const response = await fetchJson(`${baseUrl}/rest/v1/ritme_state`, {
-        method: 'POST',
-        headers: { ...headers, Prefer: 'resolution=merge-duplicates' },
-        body: JSON.stringify({ id: 'demo', payload: data, updated_at: new Date().toISOString() }),
-      });
-      if (!response.ok) throw new Error('Supabase ha rebutjat l’escriptura');
+    async push() {
+      return undefined;
+    },
+    async pushPending(snapshot, ops) {
+      await pushCloud(snapshot, ops);
     },
   };
 }
 
 export async function connectRemote(): Promise<RemoteStore | null> {
-  const supabaseUrl = env('EXPO_PUBLIC_SUPABASE_URL');
-  const supabaseKey = env('EXPO_PUBLIC_SUPABASE_ANON_KEY');
-  if (supabaseUrl && supabaseKey) return supabaseRemote(supabaseUrl.replace(/\/$/, ''), supabaseKey);
+  if (supabaseConfigured()) {
+    const session = await freshAuth();
+    return session ? supabaseAccountRemote() : null;
+  }
   const hub = defaultHubUrl();
   if (!hub) return null;
   try {

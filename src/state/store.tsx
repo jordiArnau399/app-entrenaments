@@ -6,7 +6,9 @@ import { pendingOps } from '../domain/sync';
 import type { ExerciseType, SessionFeeling, Snapshot, Template } from '../domain/types';
 import type { LogDraftExercise } from '../domain/sessionLog';
 import { configureNotifications, scheduleDailyReminder } from '../sync/notifications';
-import { connectRemote } from '../sync/remote';
+import { signIn as authSignIn, signOutLocal, signUpClient, signUpTrainer, supabaseConfigured } from '../sync/auth';
+import { pullCloud } from '../sync/cloud';
+import { connectRemote, supabaseAccountRemote } from '../sync/remote';
 
 type Hub = 'off' | 'connected' | 'unavailable';
 
@@ -28,7 +30,12 @@ type AppApi = {
   pending: number;
   hub: Hub;
   syncing: boolean;
+  accounts: boolean;
   clearNotice: () => void;
+  signIn: (email: string, password: string) => Promise<'trainer' | 'client' | undefined>;
+  signUpAsTrainer: (name: string, email: string, password: string) => Promise<'trainer' | 'client' | undefined>;
+  signUpAsClient: (name: string, email: string, password: string, code: string) => Promise<'trainer' | 'client' | undefined>;
+  signOutAccount: () => Promise<void>;
   enterTrainer: () => Promise<void>;
   enterClient: (clientId: string) => Promise<void>;
   leave: () => Promise<void>;
@@ -138,6 +145,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, [apply, syncNow]);
 
+  const enterAccount = useCallback(
+    async (start: () => Promise<{ userId: string }>): Promise<'trainer' | 'client' | undefined> => {
+      const repo = repoRef.current;
+      if (!repo) return undefined;
+      try {
+        const session = await start();
+        repo.remote = supabaseAccountRemote();
+        await repo.adoptAccount(await pullCloud(), session.userId);
+        setNotice(null);
+        setHub('connected');
+        apply();
+        const role = repo.snapshot.settings.role;
+        if (role !== 'trainer' && role !== 'client') throw new Error('Aquest compte no té perfil');
+        return role;
+      } catch (cause) {
+        setNotice(cause instanceof Error ? cause.message : 'No s\'ha pogut entrar');
+        apply();
+        return undefined;
+      }
+    },
+    [apply],
+  );
+
   const run = useCallback(
     async <T,>(work: (repo: Repository) => Promise<T>): Promise<T | undefined> => {
       const repo = repoRef.current;
@@ -166,7 +196,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       pending,
       hub,
       syncing,
+      accounts: supabaseConfigured(),
       clearNotice: () => setNotice(null),
+      signIn: (email, password) => enterAccount(() => authSignIn(email, password)),
+      signUpAsTrainer: (name, email, password) => enterAccount(() => signUpTrainer(name, email, password)),
+      signUpAsClient: (name, email, password, code) => enterAccount(() => signUpClient(name, email, password, code)),
+      signOutAccount: async () => {
+        signOutLocal();
+        await run((repo) => repo.signOutAccount());
+        setHub('off');
+      },
       enterTrainer: () => run((repo) => repo.setProfile('trainer', null)).then(() => undefined),
       enterClient: (clientId) => run((repo) => repo.setProfile('client', clientId)).then(() => undefined),
       leave: () => run((repo) => repo.setProfile(null, null)).then(() => undefined),
@@ -180,7 +219,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       },
       syncNow,
       resetDemo: () => run((repo) => repo.resetDemo()).then(() => undefined),
-      addClient: (name, email) => run((repo) => repo.addClient(name, email)).then(() => undefined),
+      addClient: async (name, email) => {
+        const code = await run((repo) => repo.addClient(name, email));
+        if (repoRef.current?.snapshot.settings.mode === 'account' && code) {
+          setNotice(`Codi d'invitació: ${code}. El client l'escriu en registrar-se.`);
+        }
+      },
       saveExercise: (input) => run((repo) => repo.saveExercise(input)).then(() => undefined),
       deleteExercise: (id) => run((repo) => repo.deleteExercise(id)).then(() => undefined),
       saveTemplate: (draft) => run((repo) => repo.saveTemplate(draft)),
@@ -192,7 +236,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       logSession: async (input) => Boolean(await run((repo) => repo.logSession(input))),
       skipSession: (sessionId) => run((repo) => repo.skipSession(sessionId)).then(() => undefined),
     }),
-    [ready, error, notice, snapshot, pending, hub, syncing, run, syncNow],
+    [ready, error, notice, snapshot, pending, hub, syncing, run, syncNow, enterAccount],
   );
 
   return <AppContext.Provider value={api}>{children}</AppContext.Provider>;

@@ -8,7 +8,7 @@ import { Button, Card, Field, T, Toggle } from '../../src/ui/ui';
 
 export default function SettingsScreen() {
   const snapshot = useSnapshot();
-  const { pending, hub, setOffline, setReminder, syncNow, leave, syncing } = useApp();
+  const { pending, hub, setOffline, setReminder, syncNow, leave, signOutAccount, syncing } = useApp();
   const [time, setTime] = useState(snapshot.settings.reminderTime);
   const [feedback, setFeedback] = useState<string | null>(null);
   const sync = syncCopy(snapshot.settings.offline, pending, hub);
@@ -35,14 +35,17 @@ export default function SettingsScreen() {
       </Card>
       <Card style={{ gap: 8 }}>
         <T>
-          Les dades d'aquesta demostració es queden en aquest aparell. Si has engegat l'app amb npm start, el concentrador local les comparteix amb l'ordinador.
+          {snapshot.settings.mode === 'account'
+            ? 'El pla es desa en aquest aparell i es sincronitza amb el teu compte quan hi ha connexió.'
+            : 'Les dades d\'aquesta demostració es queden en aquest aparell. Si has engegat l\'app amb npm start, el concentrador local les comparteix amb l\'ordinador.'}
         </T>
         <View>
           <Button
-            label="Canvia de perfil"
+            label={snapshot.settings.mode === 'account' ? 'Tanca la sessió' : 'Canvia de perfil'}
             tone="secondary"
             onPress={() => {
-              leave().then(() => router.replace('/'));
+              const leaveApp = snapshot.settings.mode === 'account' ? signOutAccount : leave;
+              leaveApp().then(() => router.replace('/'));
             }}
           />
         </View>
