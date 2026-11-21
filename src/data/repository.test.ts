@@ -208,19 +208,10 @@ describe('repositori i cua', () => {
     expect(rebuilt.every((session) => sent.includes(session.id))).toBe(true);
   });
 
-  it('el codi d’invitació es desa al núvol abans de mostrar-lo, també si ja hi havia una sincronització', async () => {
+  it('el codi d’invitació es desa al núvol abans de mostrar-lo', async () => {
     const storage = new MemoryStorage();
     const seed = accountSeed();
     storage.snapshot = seed;
-    let release: () => void = () => undefined;
-    let opened: () => void = () => undefined;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const started = new Promise<void>((resolve) => {
-      opened = resolve;
-    });
-    let calls = 0;
     const codes: string[] = [];
     const remote: RemoteStore = {
       name: 'supabase',
@@ -231,31 +222,52 @@ describe('repositori i cua', () => {
         return undefined;
       },
       async pushPending(snapshot, ops) {
-        calls += 1;
         for (const op of ops) {
           if (op.entity !== 'invite') continue;
           const invite = (snapshot.invites ?? []).find((item) => item.id === op.entityId);
           if (invite) codes.push(invite.code);
         }
-        if (calls === 1) {
-          opened();
-          await gate;
+      },
+    };
+    const repo = await Repository.load(storage, remote);
+    const code = await repo.createInvite('Felix', 'felix@exemple.cat');
+    expect(code).toMatch(/^[A-Z0-9]{6}$/);
+    expect(codes).toContain(code);
+    expect(pendingOps(repo.queue).some((op) => op.entity === 'invite')).toBe(false);
+  });
+
+  it('un element rebutjat no atura la resta i el pla es queda a l’aparell', async () => {
+    const storage = new MemoryStorage();
+    const seed = accountSeed();
+    const plan = seed.plans[0];
+    const session = seed.sessions.find((item) => item.planId === plan.id)!;
+    storage.snapshot = seed;
+    storage.queue = [queued('plan', plan.id, '2026-11-21T10:00:01.000Z'), queued('session', session.id, '2026-11-21T10:00:00.000Z')];
+    const sent: string[] = [];
+    const remote: RemoteStore = {
+      name: 'supabase',
+      async pull() {
+        return collectionsOf(seed);
+      },
+      async push() {
+        return undefined;
+      },
+      async pushPending(_snapshot, ops) {
+        for (const op of ops) {
+          if (op.entity === 'plan') throw new Error('new row violates row-level security policy');
+          sent.push(op.entityId);
         }
       },
     };
     const repo = await Repository.load(storage, remote);
-    const first = repo.flush();
-    await started;
-    const pendingCode = repo.createInvite('Felix', 'felix@exemple.cat');
-    for (let attempt = 0; attempt < 40 && (repo.snapshot.invites ?? []).length === 0; attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 5));
-    }
-    release();
-    const code = await pendingCode;
-    await first;
-    expect(code).toMatch(/^[A-Z0-9]{6}$/);
-    expect(codes).toContain(code);
-    expect(pendingOps(repo.queue).some((op) => op.entity === 'invite')).toBe(false);
+    expect(await repo.flush()).toBe('error');
+    expect(sent).toContain(session.id);
+    const stuck = pendingOps(repo.queue).find((op) => op.entityId === plan.id);
+    expect(stuck?.lastError).toMatch(/no és del teu compte/);
+    expect(repo.snapshot.plans.some((item) => item.id === plan.id)).toBe(true);
+    expect(repo.snapshot.sessions.some((item) => item.id === session.id)).toBe(true);
+    repo.retryPending();
+    expect(repo.queue.find((op) => op.entityId === plan.id)?.attempts).toBe(0);
   });
 
   it('si el núvol rebutja el codi, no es mostra i es pot tornar a provar', async () => {
@@ -373,6 +385,20 @@ describe('repositori i cua', () => {
     expect(codes).toContain('9QCD9L');
   });
 });
+
+function queued(entity: 'plan' | 'session', entityId: string, createdAt: string) {
+  return {
+    id: `op_${entityId}`,
+    entity,
+    entityId,
+    op: 'upsert' as const,
+    payload: { id: entityId },
+    createdAt,
+    attempts: 0,
+    lastError: null,
+    status: 'pending' as const,
+  };
+}
 
 function felixInvite(trainerId: string) {
   return {

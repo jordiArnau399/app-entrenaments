@@ -4,6 +4,7 @@ import { createSessionLog, type LogDraftExercise } from '../domain/sessionLog';
 import { buildSeed } from '../domain/seed';
 import { blankSnapshot, snapshotFromCloud, type CloudBundle } from '../domain/account';
 import { createInviteCode } from '../domain/access';
+import { explainSyncError, sortSyncOps } from '../domain/syncError';
 import { applyPendingDeletes, enqueue, pendingOps, toCollections, mergeSnapshots, type SyncOp } from '../domain/sync';
 import type { CardioTarget, DataCollections, Exercise, Invite, SessionFeeling, Snapshot, StrengthTarget, Template } from '../domain/types';
 import type { Storage } from './storage';
@@ -44,6 +45,7 @@ export class Repository {
   }
 
   private touchQueue(entity: SyncOp['entity'], entityId: string, op: SyncOp['op'] = 'upsert'): void {
+    if (this.queue.some((item) => item.entity === entity && item.entityId === entityId && item.status !== 'synced')) return;
     this.queue = enqueue(this.queue, {
       id: createId('op'),
       entity,
@@ -52,6 +54,13 @@ export class Repository {
       payload: { id: entityId },
       createdAt: new Date().toISOString(),
     });
+  }
+
+  /** Torna a posar a la cua els elements que ja han fallat, sense esborrar-los de l'aparell. */
+  retryPending(): void {
+    this.queue = this.queue.map((op) =>
+      op.status === 'pending' || op.status === 'failed' ? { ...op, status: 'pending', attempts: 0, lastError: null } : op,
+    );
   }
 
   async setProfile(role: 'trainer' | 'client' | null, clientId: string | null): Promise<void> {
@@ -467,16 +476,30 @@ export class Repository {
       collections.logs = collections.logs.map((log) =>
         log.syncStatus === 'pending' && pendingIds.has(log.id) ? { ...log, syncStatus: 'synced' } : log,
       );
-      const toPush = pendingOps(this.queue);
-      if (this.remote.pushPending) await this.remote.pushPending({ ...this.snapshot, logs: collections.logs }, toPush);
-      else await this.remote.push(collections);
-      const pushedIds = new Set(toPush.map((op) => op.id));
-      this.queue = this.queue.map((op) =>
-        pushedIds.has(op.id) ? { ...op, status: 'synced', lastError: null } : op,
-      );
+      const toPush = sortSyncOps(pendingOps(this.queue)).filter((op) => op.attempts < 8);
+      let failed = false;
+      if (this.remote.pushPending) {
+        for (const op of toPush) {
+          try {
+            await this.remote.pushPending({ ...this.snapshot, logs: collections.logs }, [op]);
+            this.queue = this.queue.map((item) => (item.id === op.id ? { ...item, status: 'synced', lastError: null } : item));
+          } catch (error) {
+            failed = true;
+            const attempts = op.attempts + 1;
+            const message = explainSyncError(error instanceof Error ? error.message : 'Error de sincronització');
+            this.queue = this.queue.map((item) =>
+              item.id === op.id ? { ...item, attempts, lastError: message, status: attempts >= 8 ? 'failed' : 'pending' } : item,
+            );
+          }
+        }
+      } else if (toPush.length > 0) {
+        await this.remote.push(collections);
+        const pushedIds = new Set(toPush.map((op) => op.id));
+        this.queue = this.queue.map((op) => (pushedIds.has(op.id) ? { ...op, status: 'synced', lastError: null } : op));
+      }
       this.snapshot = { ...this.snapshot, logs: collections.logs };
       await this.persist();
-      return 'synced';
+      return failed ? 'error' : 'synced';
     } catch (error) {
       if (hadPending) {
         const message = error instanceof Error ? error.message : 'Error de sincronització';

@@ -3,6 +3,7 @@ import { AppState, Platform } from 'react-native';
 import { openAppRepository } from '../data/openApp';
 import type { Repository } from '../data/repository';
 import { pendingOps } from '../domain/sync';
+import { syncProblems as problemsOf } from '../domain/syncError';
 import type { ExerciseType, SessionFeeling, Snapshot, Template } from '../domain/types';
 import type { LogDraftExercise } from '../domain/sessionLog';
 import { configureNotifications, scheduleDailyReminder } from '../sync/notifications';
@@ -28,6 +29,7 @@ type AppApi = {
   notice: string | null;
   snapshot: Snapshot | null;
   pending: number;
+  syncProblems: { id: string; title: string; detail: string }[];
   hub: Hub;
   syncing: boolean;
   accounts: boolean;
@@ -42,6 +44,7 @@ type AppApi = {
   setOffline: (value: boolean) => Promise<void>;
   setReminder: (time: string) => Promise<string>;
   syncNow: () => Promise<void>;
+  retrySync: () => Promise<void>;
   resetDemo: () => Promise<void>;
   addClient: (name: string, email: string) => Promise<void>;
   saveExercise: (input: ExerciseInput) => Promise<void>;
@@ -68,6 +71,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [pending, setPending] = useState(0);
+  const [syncProblems, setSyncProblems] = useState<{ id: string; title: string; detail: string }[]>([]);
   const [hub, setHub] = useState<Hub>('off');
   const [syncing, setSyncing] = useState(false);
 
@@ -76,6 +80,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!repo) return;
     setSnapshot(repo.snapshot);
     setPending(pendingOps(repo.queue).length);
+    setSyncProblems(problemsOf(repo.queue));
   }, []);
 
   const syncNow = useCallback(async () => {
@@ -211,6 +216,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       notice,
       snapshot,
       pending,
+      syncProblems,
       hub,
       syncing,
       accounts: supabaseConfigured(),
@@ -235,6 +241,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return 'Recordatori diari programat.';
       },
       syncNow,
+      retrySync: async () => {
+        repoRef.current?.retryPending();
+        await syncNow();
+      },
       resetDemo: () => run((repo) => repo.resetDemo()).then(() => undefined),
       addClient: async (name, email) => {
         const code = await run((repo) => repo.addClient(name, email));
@@ -253,7 +263,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       logSession: async (input) => Boolean(await run((repo) => repo.logSession(input))),
       skipSession: (sessionId) => run((repo) => repo.skipSession(sessionId)).then(() => undefined),
     }),
-    [ready, error, notice, snapshot, pending, hub, syncing, run, syncNow, enterAccount],
+    [ready, error, notice, snapshot, pending, syncProblems, hub, syncing, run, syncNow, enterAccount],
   );
 
   return <AppContext.Provider value={api}>{children}</AppContext.Provider>;
