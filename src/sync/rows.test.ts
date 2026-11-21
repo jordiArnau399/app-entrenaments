@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Actor } from '../domain/access';
-import { logToRow, opIsAllowed, planToRow } from './rows';
-import type { AssignedPlan, SessionLog } from '../domain/types';
+import { exerciseToRow, logToRow, opIsAllowed, planToRow, templateToRow } from './rows';
+import type { AssignedPlan, Exercise, SessionLog, Template } from '../domain/types';
 
 const client: Actor = { userId: 'client-1', role: 'client', trainerId: 'trainer-1' };
 const trainer: Actor = { userId: 'trainer-1', role: 'trainer', trainerId: 'trainer-1' };
@@ -43,5 +43,32 @@ describe('files que viatgen al núvol', () => {
     expect(opIsAllowed(client, 'plan', { trainerId: plan.trainerId, clientId: plan.clientId })).toBe(false);
     expect(opIsAllowed(trainer, 'plan', { trainerId: plan.trainerId, clientId: plan.clientId })).toBe(true);
     expect(planToRow(plan).client_id).toBe('client-1');
+  });
+
+  it('un exercici i una plantilla no envien client_id, perquè la taula no en té', () => {
+    const exercise = {
+      id: 'ex_mwqpf',
+      trainerId: 'trainer-1',
+      name: 'Esquat',
+      type: 'strength',
+      category: 'Cames',
+      description: '',
+      imageUrl: null,
+      videoUrl: null,
+      createdAt: '2026-11-21T00:00:00.000Z',
+      updatedAt: '2026-11-21T00:00:00.000Z',
+    } satisfies Exercise;
+    const template = {
+      id: 'tpl_mwqp',
+      trainerId: 'trainer-1',
+      name: 'Combinada',
+      description: '',
+      days: [],
+      createdAt: '2026-11-21T00:00:00.000Z',
+      updatedAt: '2026-11-21T00:00:00.000Z',
+    } satisfies Template;
+    expect(exerciseToRow(exercise)).not.toHaveProperty('client_id');
+    expect(templateToRow(template)).not.toHaveProperty('client_id');
+    expect(exerciseToRow(exercise).trainer_id).toBe('trainer-1');
   });
 });
