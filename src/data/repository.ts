@@ -1,4 +1,4 @@
-import { addPlanExercise, assignTemplate, pauseOtherPlans, removePlanExercise, updatePlanTarget } from '../domain/assignPlan';
+import { addPlanExercise, assignTemplate, fillMissingPlanSessions, pauseOtherPlans, removePlanExercise, updatePlanTarget } from '../domain/assignPlan';
 import { createId, createIdFactory } from '../domain/ids';
 import { createSessionLog, type LogDraftExercise } from '../domain/sessionLog';
 import { buildSeed } from '../domain/seed';
@@ -265,12 +265,17 @@ export class Repository {
       weeks: input.weeks,
       nowIso: stamp,
     });
+    const paused = pauseOtherPlans(this.snapshot.plans, input.clientId, assigned.plan.id, stamp);
     this.snapshot = {
       ...this.snapshot,
-      plans: [...pauseOtherPlans(this.snapshot.plans, input.clientId, assigned.plan.id, stamp), assigned.plan],
+      plans: [...paused, assigned.plan],
       sessions: [...this.snapshot.sessions, ...assigned.sessions],
     };
+    for (const plan of paused) {
+      if (plan.status === 'paused' && plan.updatedAt === stamp) this.touchQueue('plan', plan.id);
+    }
     this.touchQueue('plan', assigned.plan.id);
+    for (const session of assigned.sessions) this.touchQueue('session', session.id);
     await this.persist();
     await this.flush();
     return assigned.plan.id;
@@ -336,6 +341,9 @@ export class Repository {
       ],
     };
     this.touchQueue('plan', plan.id);
+    for (const session of sessions) {
+      if (session.planId === plan.id) this.touchQueue('session', session.id);
+    }
     await this.persist();
     await this.flush();
   }
@@ -383,6 +391,7 @@ export class Repository {
       logs: [...this.snapshot.logs, created.log],
       sessions: this.snapshot.sessions.map((item) => (item.id === created.session.id ? created.session : item)),
     };
+    this.touchQueue('session', created.session.id);
     this.touchQueue('session_log', created.log.id);
     await this.persist();
     if (!this.snapshot.settings.offline) await this.flush();
@@ -402,11 +411,13 @@ export class Repository {
       const remoteData = await this.remote.pull();
       const untouched = pendingOps(this.queue).length === 0;
       if (remoteData && remoteData.clients.length > 0 && untouched) {
-        this.snapshot = { ...this.snapshot, ...remoteData };
+        const settings = this.snapshot.settings;
+        this.snapshot = { ...this.snapshot, ...remoteData, settings };
       } else {
         this.snapshot = mergeSnapshots(this.snapshot, remoteData);
         this.snapshot = applyPendingDeletes(this.snapshot, this.queue);
       }
+      this.restoreMissingSessions(remoteData);
       const pendingIds = new Set(pendingOps(this.queue).map((op) => op.entityId));
       const collections = toCollections(this.snapshot);
       collections.logs = collections.logs.map((log) =>
@@ -433,6 +444,36 @@ export class Repository {
       return 'error';
     } finally {
       this.flushing = false;
+    }
+  }
+
+  /** El client veu el calendari per les sessions. Si només va pujar el pla, es reconstrueixen i, si som l'entrenador, es tornen a enviar. */
+  private restoreMissingSessions(remote: DataCollections | null): void {
+    if (remote && this.snapshot.settings.role !== 'trainer') {
+      const remoteIds = new Set(remote.sessions.map((session) => session.id));
+      const plansOnServer = new Set(remote.sessions.map((session) => session.planId));
+      const pendingIds = new Set(pendingOps(this.queue).map((op) => op.entityId));
+      this.snapshot = {
+        ...this.snapshot,
+        sessions: this.snapshot.sessions.filter((session) => {
+          if (!plansOnServer.has(session.planId)) return true;
+          return remoteIds.has(session.id) || pendingIds.has(session.id);
+        }),
+      };
+    }
+    const stamp = new Date().toISOString();
+    const filled = fillMissingPlanSessions(this.snapshot.plans, this.snapshot.sessions, stamp);
+    if (filled !== this.snapshot.sessions) {
+      this.snapshot = { ...this.snapshot, sessions: filled };
+    }
+    if (this.snapshot.settings.role !== 'trainer' || !remote || !this.remote?.pushPending) return;
+    const remotePlans = new Set(remote.plans.map((plan) => plan.id));
+    const remoteSessions = new Set(remote.sessions.map((session) => session.id));
+    for (const plan of this.snapshot.plans) {
+      if (!remotePlans.has(plan.id)) this.touchQueue('plan', plan.id);
+    }
+    for (const session of this.snapshot.sessions) {
+      if (!remoteSessions.has(session.id)) this.touchQueue('session', session.id);
     }
   }
 

@@ -1,5 +1,5 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { openAppRepository } from '../data/openApp';
 import type { Repository } from '../data/repository';
 import { pendingOps } from '../domain/sync';
@@ -144,6 +144,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
       clearInterval(timer);
     };
   }, [apply, syncNow]);
+
+  useEffect(() => {
+    const refresh = () => {
+      syncNow().catch(() => undefined);
+    };
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refresh();
+    });
+    const onVisible = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') refresh();
+    };
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      sub.remove();
+      if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [syncNow]);
 
   const enterAccount = useCallback(
     async (start: () => Promise<{ userId: string }>): Promise<'trainer' | 'client' | undefined> => {

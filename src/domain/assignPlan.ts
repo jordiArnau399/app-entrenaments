@@ -69,25 +69,49 @@ export function assignTemplate(input: AssignInput): AssignResult {
     updatedAt: input.nowIso,
   };
 
-  const byWeekday = new Map(days.map((day) => [day.weekday, day]));
+  return { plan, sessions: sessionsForPlan(plan, input.nowIso, ids) };
+}
+
+/** Sessions de calendari d'un pla. El client les necessita per veure què toca, no només el pla. */
+export function sessionsForPlan(plan: AssignedPlan, nowIso: string, ids?: IdFactory): PlannedSession[] {
+  const byWeekday = new Map(plan.days.map((day) => [day.weekday, day]));
   const sessions: PlannedSession[] = [];
-  for (const date of eachDate(input.startDate, endDate)) {
+  for (const date of eachDate(plan.startDate, plan.endDate)) {
     const day = byWeekday.get(weekdayMonday0(date));
     if (!day) continue;
     sessions.push({
-      id: ids.session(),
+      id: ids ? ids.session() : `ses_${plan.id}_${date}`,
       planId: plan.id,
-      clientId: input.clientId,
-      trainerId: input.trainerId,
+      clientId: plan.clientId,
+      trainerId: plan.trainerId,
       date,
       name: day.name,
       status: 'pending',
-      updatedAt: input.nowIso,
-      exercises: day.exercises.map((item) => copyTarget(item, ids.sessionItem(), item.id)),
+      updatedAt: nowIso,
+      exercises: day.exercises.map((item, index) =>
+        copyTarget(item, ids ? ids.sessionItem() : `sei_${plan.id}_${date}_${index}`, item.id),
+      ),
     });
   }
+  return sessions;
+}
 
-  return { plan, sessions };
+/**
+ * Si el pla ha arribat sense les seves sessions (es van desar només en local),
+ * les reconstrueix. No en duplica si ja n'hi ha alguna d'aquest pla.
+ */
+export function fillMissingPlanSessions(
+  plans: AssignedPlan[],
+  sessions: PlannedSession[],
+  nowIso: string,
+  ids?: IdFactory,
+): PlannedSession[] {
+  const extra: PlannedSession[] = [];
+  for (const plan of plans) {
+    if (sessions.some((session) => session.planId === plan.id)) continue;
+    extra.push(...sessionsForPlan(plan, nowIso, ids));
+  }
+  return extra.length === 0 ? sessions : [...sessions, ...extra];
 }
 
 export function shiftWeekdays(template: Template, weekdayDelta: number): Template {

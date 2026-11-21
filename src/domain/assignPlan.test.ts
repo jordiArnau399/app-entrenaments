@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { addPlanExercise, assignTemplate, removePlanExercise, updatePlanTarget } from './assignPlan';
+import { addPlanExercise, assignTemplate, fillMissingPlanSessions, removePlanExercise, updatePlanTarget } from './assignPlan';
+import { todayAgenda } from './report';
 import { addDays } from './dates';
 import { sequentialIds } from './ids';
 import type { Template } from './types';
@@ -135,5 +136,28 @@ describe('assignació de plantilla', () => {
     expect(removed.plan.days[0].exercises).toHaveLength(1);
     expect(removed.sessions.find((session) => session.date === '2026-11-09')!.exercises).toHaveLength(1);
     expect(addDays('2026-11-02', 7)).toBe('2026-11-09');
+  });
+
+  it('si el pla arriba sense sessions, es reconstrueixen i el client veu la propera', () => {
+    const { plan, sessions } = assignTemplate({
+      template: template(),
+      clientId: 'cli_carina',
+      trainerId: 'trn_jordi',
+      startDate: '2026-11-23',
+      weeks: 1,
+      nowIso: '2026-11-21T12:00:00.000Z',
+      ids: sequentialIds('c'),
+    });
+    expect(sessions.map((session) => session.date)).toEqual(['2026-11-23']);
+    const restored = fillMissingPlanSessions([plan], [], plan.updatedAt, sequentialIds('r'));
+    expect(restored.map((session) => session.date)).toEqual(['2026-11-23']);
+    expect(fillMissingPlanSessions([plan], sessions, plan.updatedAt)).toBe(sessions);
+
+    const before = todayAgenda(restored, [plan], 'cli_carina', '2026-11-22');
+    expect(before.session).toBeNull();
+    expect(before.plan?.name).toBe('Força');
+    expect(before.upcoming.map((session) => session.date)).toEqual(['2026-11-23']);
+    const onTheDay = todayAgenda(restored, [plan], 'cli_carina', '2026-11-23');
+    expect(onTheDay.session?.name).toBe('Força A');
   });
 });

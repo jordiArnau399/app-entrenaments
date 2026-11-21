@@ -28,6 +28,21 @@ export function logForSession(logs: SessionLog[], sessionId: string): SessionLog
   return logs.find((log) => log.plannedSessionId === sessionId) ?? null;
 }
 
+export function todayAgenda(
+  sessions: PlannedSession[],
+  plans: AssignedPlan[],
+  clientId: string,
+  today: string,
+): { plan: AssignedPlan | null; session: PlannedSession | null; upcoming: PlannedSession[] } {
+  const plan = activePlan(plans, clientId);
+  const mine = sessionsFor(sessions, clientId).filter((session) => !plan || session.planId === plan.id);
+  return {
+    plan,
+    session: sessionOnDate(sessions, plans, clientId, today),
+    upcoming: mine.filter((session) => session.date > today && session.status !== 'done').slice(0, 4),
+  };
+}
+
 export function sessionOnDate(sessions: PlannedSession[], plans: AssignedPlan[], clientId: string, date: string): PlannedSession | null {
   const matches = sessions.filter((session) => session.clientId === clientId && session.date === date);
   if (matches.length === 0) return null;
