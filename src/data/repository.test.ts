@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildSeed } from '../domain/seed';
+import { createSessionLog } from '../domain/sessionLog';
 import { pendingOps } from '../domain/sync';
 import type { DataCollections, Snapshot } from '../domain/types';
 import type { SyncOp } from '../domain/sync';
@@ -383,6 +384,96 @@ describe('repositori i cua', () => {
     const repo = await Repository.load(storage, remote);
     expect(await repo.flush()).toBe('synced');
     expect(codes).toContain('9QCD9L');
+  });
+
+  it('un registre ja pujat marca la sessió pendent com a feta i la torna a enviar', async () => {
+    const storage = new MemoryStorage();
+    const seed = accountSeed();
+    const session = seed.sessions.find((item) => item.status === 'pending');
+    expect(session).toBeTruthy();
+    const { log } = createSessionLog({
+      session: session!,
+      feeling: 'dur',
+      rpe: 8,
+      notes: 'Es molt de pes per mi',
+      deviceId: 'dev_demo',
+      endedAt: '2026-11-23T18:00:00.000Z',
+      ids: { log: () => 'log_dia1', exerciseLog: () => 'elog_dia1' },
+      exercises: session!.exercises.map((exercise) => ({
+        plannedExerciseId: exercise.id,
+        sets: exercise.strength ? [{ weightKg: 20, reps: 8 }] : null,
+        durationSec: exercise.cardio?.durationSec ?? null,
+        distanceM: exercise.cardio?.distanceM ?? null,
+      })),
+    });
+    seed.logs = [...seed.logs, { ...log, syncStatus: 'synced' }];
+    storage.snapshot = structuredClone(seed);
+    storage.queue = [
+      {
+        id: 'op_sessio_rebutjada',
+        entity: 'session',
+        entityId: session!.id,
+        op: 'upsert',
+        payload: { id: session!.id },
+        createdAt: '2026-11-23T18:00:01.000Z',
+        attempts: 8,
+        lastError: 'new row violates row-level security policy',
+        status: 'failed',
+      },
+    ];
+    const pushed: string[] = [];
+    const remote: RemoteStore = {
+      name: 'supabase',
+      async pull() {
+        return collectionsOf(seed);
+      },
+      async push() {
+        return undefined;
+      },
+      async pushPending(snapshot, ops) {
+        for (const op of ops) {
+          if (op.entity !== 'session' || op.entityId !== session!.id) continue;
+          pushed.push(snapshot.sessions.find((item) => item.id === session!.id)?.status ?? '');
+        }
+      },
+    };
+    const repo = await Repository.load(storage, remote);
+    expect(repo.snapshot.sessions.find((item) => item.id === session!.id)?.status).toBe('done');
+    expect(repo.queue.find((op) => op.entityId === session!.id)?.attempts).toBe(0);
+    expect(await repo.flush()).toBe('synced');
+    expect(pushed).toEqual(['done']);
+    expect(pendingOps(repo.queue)).toHaveLength(0);
+  });
+
+  it('en obrir, un registre que només és al núvol completa la sessió', async () => {
+    const storage = new MemoryStorage();
+    const local = accountSeed();
+    const session = local.sessions.find((item) => item.status === 'pending');
+    expect(session).toBeTruthy();
+    const remoteSeed = structuredClone(local);
+    const { log } = createSessionLog({
+      session: session!,
+      feeling: 'be',
+      rpe: 6,
+      notes: '',
+      deviceId: 'dev_client',
+      endedAt: '2026-11-24T18:00:00.000Z',
+      ids: { log: () => 'log_dia2', exerciseLog: () => 'elog_dia2' },
+      exercises: session!.exercises.map((exercise) => ({
+        plannedExerciseId: exercise.id,
+        sets: exercise.strength ? [{ weightKg: 20, reps: 8 }] : null,
+        durationSec: exercise.cardio?.durationSec ?? null,
+        distanceM: exercise.cardio?.distanceM ?? null,
+      })),
+    });
+    remoteSeed.logs = [...remoteSeed.logs, { ...log, syncStatus: 'synced' }];
+    storage.snapshot = local;
+    const remote = remoteWith(collectionsOf(remoteSeed));
+    const repo = await Repository.load(storage, remote);
+    expect(repo.snapshot.sessions.find((item) => item.id === session!.id)?.status).toBe('pending');
+    expect(await repo.flush()).toBe('synced');
+    expect(repo.snapshot.sessions.find((item) => item.id === session!.id)?.status).toBe('done');
+    expect(remote.data?.sessions.find((item) => item.id === session!.id)?.status).toBe('done');
   });
 });
 

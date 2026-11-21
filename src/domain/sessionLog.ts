@@ -62,3 +62,19 @@ export function createSessionLog(input: {
     session: { ...input.session, status: 'done', updatedAt: input.endedAt },
   };
 }
+
+/**
+ * Si el registre va pujar i l'estat de la sessió no, la sessió queda pendent
+ * amb un resultat a sota. El registre mana: la sessió està feta.
+ */
+export function completeSessionsFromLogs(sessions: PlannedSession[], logs: SessionLog[]): PlannedSession[] {
+  const loggedAt = new Map(logs.map((log) => [log.plannedSessionId, log.updatedAt]));
+  let changed = false;
+  const next = sessions.map((session) => {
+    const updatedAt = loggedAt.get(session.id);
+    if (!updatedAt || session.status === 'done') return session;
+    changed = true;
+    return { ...session, status: 'done' as const, updatedAt };
+  });
+  return changed ? next : sessions;
+}
