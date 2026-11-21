@@ -8,6 +8,7 @@ if (!fs.existsSync(indexPath)) {
   process.exit(1);
 }
 
+// GitHub Pages serveix 404.html quan algú obre o refresca /entrenador directament.
 fs.copyFileSync(indexPath, path.join(dist, '404.html'));
 fs.writeFileSync(path.join(dist, '.nojekyll'), '');
 console.log('Preparat per a GitHub Pages: 404.html i .nojekyll');

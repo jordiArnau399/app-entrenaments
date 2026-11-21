@@ -7,6 +7,7 @@ import type { SessionFeeling } from '../../../src/domain/types';
 import { useApp, useSnapshot } from '../../../src/state/store';
 import { Screen, syncCopy } from '../../../src/ui/shell';
 import { colors } from '../../../src/ui/theme';
+import { ExerciseVideoButton } from '../../../src/ui/ExerciseVideo';
 import { Button, Card, ExerciseGlyph, Stepper, T, Field, Pill } from '../../../src/ui/ui';
 
 type Draft = { sets: { weightKg: number; reps: number }[]; minutes: number; km: number };
@@ -129,6 +130,7 @@ export default function SessionLogger() {
             </View>
           </View>
           {catalog?.description ? <T color={colors.muted}>{catalog.description}</T> : null}
+          <ExerciseVideoButton videoUrl={catalog?.videoUrl} />
           {exercise.strength
             ? draft.sets.map((set, index) => (
                 <View key={`${exercise.id}-${index}`} style={{ gap: 8 }}>
