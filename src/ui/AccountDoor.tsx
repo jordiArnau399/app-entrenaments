@@ -14,8 +14,9 @@ export function AccountForm({ audience }: { audience: Door }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
-  const go = (role: Door | undefined) => {
-    if (role !== audience) return;
+  const go = (role: Door | 'admin' | undefined) => {
+    const here = role === 'admin' ? 'trainer' : role;
+    if (here !== audience) return;
     router.replace(audience === 'trainer' ? '/entrenador' : '/client');
   };
   return (
@@ -25,19 +26,22 @@ export function AccountForm({ audience }: { audience: Door }) {
       {screen === 'signup' ? <Field label="Nom" value={name} onChangeText={setName} placeholder="El teu nom" /> : null}
       <Field label="Correu" value={email} onChangeText={setEmail} placeholder="tu@exemple.cat" keyboard="email-address" />
       <Field label="Contrasenya" value={password} onChangeText={setPassword} placeholder="Mínim 6 caràcters" secure />
-      {audience === 'client' && screen === 'signup' ? <Field label="Codi d'invitació" value={code} onChangeText={setCode} placeholder="AB12CD" /> : null}
+      {screen === 'signup' ? <Field label="Codi d'invitació" value={code} onChangeText={setCode} placeholder="AB12CD" /> : null}
+      {screen === 'signup' && audience === 'trainer' ? (
+        <T variant="small" color={colors.muted}>Sense codi no es crea cap entrenador. El compte administrador es crea sol amb el seu correu.</T>
+      ) : null}
       {screen === 'login' ? (
         <Button label="Entra" disabled={!email.trim() || password.length < 6} onPress={() => { signIn(email, password).then(go); }} />
       ) : null}
       {screen === 'signup' && audience === 'trainer' ? (
-        <Button label="Crea el compte" disabled={!name.trim() || !email.trim() || password.length < 6} onPress={() => { signUpAsTrainer(name, email, password).then(go); }} />
+        <Button label="Crea el compte" disabled={!name.trim() || !email.trim() || password.length < 6} onPress={() => { signUpAsTrainer(name, email, password, code).then(go); }} />
       ) : null}
       {screen === 'signup' && audience === 'client' ? (
         <Button label="Crea el compte" disabled={!name.trim() || !email.trim() || password.length < 6 || code.trim().length < 6} onPress={() => { signUpAsClient(name, email, password, code).then(go); }} />
       ) : null}
       {screen === 'login' ? (
         <Button
-          label={audience === 'client' ? 'Tinc un codi d’invitació' : 'Soc entrenador nou'}
+          label={audience === 'client' ? 'Tinc un codi d’invitació' : 'Tinc un codi d’entrenador'}
           tone="ghost"
           onPress={() => setScreen('signup')}
         />

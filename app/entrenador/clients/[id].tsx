@@ -12,13 +12,15 @@ import { useApp, useSnapshot } from '../../../src/state/store';
 import { PageIntro, Screen, useWide } from '../../../src/ui/shell';
 import { ResultsPanel } from '../../../src/ui/results';
 import { colors } from '../../../src/ui/theme';
+import { PlanHistory } from '../../../src/ui/PlanHistory';
 import { Button, Card, Pill, Stepper, T } from '../../../src/ui/ui';
 
 export default function ClientFollowUp() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const snapshot = useSnapshot();
   const wide = useWide();
-  const today = todayIso();
+  const clientZone = snapshot.clients.find((item) => item.id === id)?.timezone;
+  const today = todayIso(new Date(), clientZone);
   const client = snapshot.clients.find((item) => item.id === id);
   const [tab, setTab] = useState<'seguiment' | 'pla'>('seguiment');
   const [openId, setOpenId] = useState<string | null>(null);
@@ -72,8 +74,11 @@ export default function ClientFollowUp() {
           <Pill label="Pla" tone={tab === 'pla' ? 'accent' : 'neutral'} />
         </Pressable>
       </View>
-      {tab === 'pla' && report.activePlan ? (
-        <PlanEditor key={report.activePlan.updatedAt} planId={report.activePlan.id} days={report.activePlan.days} />
+      {tab === 'pla' ? (
+        <View style={{ gap: 12 }}>
+          <PlanHistory clientId={client.id} timeZone={clientZone} />
+          {report.activePlan ? <PlanEditor key={report.activePlan.updatedAt} planId={report.activePlan.id} days={report.activePlan.days} /> : null}
+        </View>
       ) : null}
       {tab === 'seguiment' ? (
         <View style={{ flexDirection: wide ? 'row' : 'column', gap: 16, alignItems: 'flex-start' }}>

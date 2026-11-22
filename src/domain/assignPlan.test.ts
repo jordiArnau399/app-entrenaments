@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addPlanExercise, assignTemplate, fillMissingPlanSessions, removePlanExercise, updatePlanTarget } from './assignPlan';
+import { addPlanExercise, assignTemplate, fillMissingPlanSessions, removePlanExercise, replaceClientPlan, updatePlanTarget } from './assignPlan';
 import { todayAgenda } from './report';
 import { addDays } from './dates';
 import { sequentialIds } from './ids';
@@ -159,5 +159,37 @@ describe('assignació de plantilla', () => {
     expect(before.upcoming.map((session) => session.date)).toEqual(['2026-11-23']);
     const onTheDay = todayAgenda(restored, [plan], 'cli_carina', '2026-11-23');
     expect(onTheDay.session?.name).toBe('Força A');
+  });
+
+  it('canviar la plantilla conserva el registrat i substitueix el pendent futur', () => {
+    const { plan, sessions } = assignTemplate({
+      template: template(),
+      clientId: 'cli_carina',
+      trainerId: 'trn_jordi',
+      startDate: '2026-11-16',
+      weeks: 3,
+      nowIso: '2026-11-16T08:00:00.000Z',
+      ids: sequentialIds('old'),
+    });
+    const logged = sessions.find((session) => session.date === '2026-11-16')!;
+    const done = sessions.map((session) => (session.id === logged.id ? { ...session, status: 'done' as const } : session));
+    const other = { ...template(), id: 'tpl_nova', name: 'Hipertrofia', days: [{ ...template().days[0], id: 'td_new', name: 'Empenta' }] };
+    const replaced = replaceClientPlan({
+      plans: [plan],
+      sessions: done,
+      logs: [{ plannedSessionId: logged.id }],
+      template: other,
+      clientId: 'cli_carina',
+      trainerId: 'trn_jordi',
+      startDate: '2026-11-23',
+      weeks: 2,
+      nowIso: '2026-11-22T09:00:00.000Z',
+      ids: sequentialIds('new'),
+    });
+    expect(replaced.plans.find((item) => item.id === plan.id)?.status).toBe('completed');
+    expect(replaced.plans.find((item) => item.id === plan.id)?.endDate).toBe('2026-11-22');
+    expect(replaced.sessions.some((session) => session.id === logged.id && session.status === 'done')).toBe(true);
+    expect(replaced.sessions.some((session) => replaced.removedSessionIds.includes(session.id))).toBe(false);
+    expect(replaced.sessions.find((session) => session.date === '2026-11-23' && session.planId === replaced.plan.id)?.name).toBe('Empenta');
   });
 });

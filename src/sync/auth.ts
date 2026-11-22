@@ -1,3 +1,6 @@
+import { deviceTimeZone } from '../domain/dates';
+import { deviceLanguage } from '../domain/i18n';
+
 const KEY = 'ritme.auth';
 
 export type AuthSession = {
@@ -104,11 +107,17 @@ export function signIn(email: string, password: string): Promise<AuthSession> {
   return authFetch('/auth/v1/token?grant_type=password', { email: email.trim(), password });
 }
 
-export function signUpTrainer(name: string, email: string, password: string): Promise<AuthSession> {
+export function signUpTrainer(name: string, email: string, password: string, inviteCode = ''): Promise<AuthSession> {
   return authFetch('/auth/v1/signup', {
     email: email.trim(),
     password,
-    data: { name: name.trim(), role: 'trainer' },
+    data: {
+      name: name.trim(),
+      role: 'trainer',
+      invite_code: inviteCode.trim().toUpperCase(),
+      timezone: deviceTimeZone(),
+      language: deviceLanguage(),
+    },
   });
 }
 
@@ -116,7 +125,13 @@ export function signUpClient(name: string, email: string, password: string, invi
   return authFetch('/auth/v1/signup', {
     email: email.trim(),
     password,
-    data: { name: name.trim(), role: 'client', invite_code: inviteCode.trim().toUpperCase() },
+    data: {
+      name: name.trim(),
+      role: 'client',
+      invite_code: inviteCode.trim().toUpperCase(),
+      timezone: deviceTimeZone(),
+      language: deviceLanguage(),
+    },
   });
 }
 

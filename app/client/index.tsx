@@ -8,6 +8,7 @@ import { useApp, useSnapshot } from '../../src/state/store';
 import { Screen, SyncLabel } from '../../src/ui/shell';
 import { colors } from '../../src/ui/theme';
 import { ExerciseVideo } from '../../src/ui/ExerciseVideo';
+import { useT } from '../../src/ui/language';
 import { Button, Card, ExerciseGlyph, T } from '../../src/ui/ui';
 
 export default function TodayScreen() {
@@ -15,7 +16,7 @@ export default function TodayScreen() {
   const { skipSession, syncNow } = useApp();
   const clientId = snapshot.settings.clientId!;
   const client = snapshot.clients.find((item) => item.id === clientId);
-  const today = todayIso();
+  const today = todayIso(new Date(), client?.timezone ?? snapshot.settings.timezone);
   const agenda = todayAgenda(snapshot.sessions, snapshot.plans, clientId, today);
   const session = agenda.session;
   return (
@@ -84,6 +85,7 @@ function TodayCard({
   onStart: () => void;
   onSkip: () => void;
 }) {
+  const t = useT();
   return (
     <Card style={{ gap: 14, padding: 8 }}>
       <View style={{ paddingHorizontal: 8, paddingTop: 8, gap: 4 }}>
@@ -115,7 +117,7 @@ function TodayCard({
           <T color={colors.good}>Sessió registrada.</T>
         ) : (
           <>
-            <Button label={status === 'skipped' ? 'Registrar-la igualment' : 'Comença la sessió'} onPress={onStart} />
+            <Button label={status === 'skipped' ? t('Registrar-la igualment') : t('Comença la sessió')} onPress={onStart} />
             {status === 'pending' ? <Button label="Avui no puc" tone="ghost" onPress={onSkip} /> : null}
           </>
         )}

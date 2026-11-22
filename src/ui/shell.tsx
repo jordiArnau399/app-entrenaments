@@ -2,7 +2,9 @@ import { ReactNode, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import { router, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { currentUserName } from '../domain/actor';
 import { useApp } from '../state/store';
+import { useT } from './language';
 import { colors, font } from './theme';
 import { Mark, Notice, T } from './ui';
 
@@ -108,6 +110,7 @@ export function SyncLabel({ light = false }: { light?: boolean }) {
 
 export function TrainerSidebar() {
   const path = usePathname();
+  const t = useT();
   const insets = useSafeAreaInsets();
   const { snapshot, leave, resetDemo, signOutAccount } = useApp();
   return (
@@ -121,7 +124,10 @@ export function TrainerSidebar() {
           </View>
         </View>
         <View style={{ gap: 4 }}>
-          {trainerNav.map((item) => {
+          {(snapshot?.settings.role === 'admin'
+            ? [...trainerNav, { href: '/entrenador/admin', label: 'Administració', active: (path: string) => path.startsWith('/entrenador/admin') }]
+            : trainerNav
+          ).map((item) => {
             const active = item.active(path);
             return (
               <Pressable
@@ -131,14 +137,14 @@ export function TrainerSidebar() {
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 11, paddingHorizontal: 12, borderRadius: 12, backgroundColor: active ? 'rgba(255,255,255,0.08)' : 'transparent' }}
               >
                 <View style={{ width: 3, height: 18, borderRadius: 2, backgroundColor: active ? colors.accent : 'transparent' }} />
-                <Text style={{ color: active ? colors.sidebarText : colors.sidebarMuted, fontFamily: font.body, fontSize: 16, fontWeight: '600' }}>{item.label}</Text>
+                <Text style={{ color: active ? colors.sidebarText : colors.sidebarMuted, fontFamily: font.body, fontSize: 16, fontWeight: '600' }}>{t(item.label)}</Text>
               </Pressable>
             );
           })}
         </View>
       </View>
       <View style={{ gap: 8, paddingHorizontal: 8 }}>
-        <Text style={{ color: colors.sidebarText, fontFamily: font.body, fontSize: 15, fontWeight: '600' }}>{snapshot?.trainers[0]?.name}</Text>
+        <Text style={{ color: colors.sidebarText, fontFamily: font.body, fontSize: 15, fontWeight: '600' }}>{snapshot ? currentUserName(snapshot) : ''}</Text>
         <SyncLabel light />
         <Pressable
           accessibilityRole="button"
@@ -165,6 +171,7 @@ export function TopBar({ title, items }: { title: string; items?: NavItem[] }) {
   const insets = useSafeAreaInsets();
   const path = usePathname();
   const wide = useWide();
+  const t = useT();
   return (
     <View style={{ paddingTop: insets.top + 10, paddingHorizontal: wide ? 28 : 16, paddingBottom: 10, backgroundColor: colors.paper, borderBottomWidth: 1, borderBottomColor: colors.line, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -177,7 +184,7 @@ export function TopBar({ title, items }: { title: string; items?: NavItem[] }) {
             const active = item.active(path);
             return (
               <Pressable key={item.href} onPress={() => router.push(item.href as never)} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: active ? colors.ink : 'transparent' }}>
-                <Text style={{ fontFamily: font.body, fontWeight: '600', color: active ? colors.surface : colors.ink }}>{item.label}</Text>
+                <Text style={{ fontFamily: font.body, fontWeight: '600', color: active ? colors.surface : colors.ink }}>{t(item.label)}</Text>
               </Pressable>
             );
           })}
@@ -191,6 +198,7 @@ export function TopBar({ title, items }: { title: string; items?: NavItem[] }) {
 
 export function BottomNav({ items }: { items: NavItem[] }) {
   const path = usePathname();
+  const t = useT();
   const insets = useSafeAreaInsets();
   return (
     <View style={{ flexDirection: 'row', backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.line, paddingBottom: Math.max(insets.bottom, 8), paddingTop: 6 }}>
@@ -199,7 +207,7 @@ export function BottomNav({ items }: { items: NavItem[] }) {
         return (
           <Pressable key={item.href} accessibilityRole="button" onPress={() => router.push(item.href as never)} style={{ flex: 1, alignItems: 'center', paddingVertical: 8, gap: 4 }}>
             <View style={{ width: 18, height: 3, borderRadius: 2, backgroundColor: active ? colors.accent : 'transparent' }} />
-            <Text style={{ fontFamily: font.body, fontSize: 13, fontWeight: '600', color: active ? colors.ink : colors.muted }}>{item.label}</Text>
+            <Text style={{ fontFamily: font.body, fontSize: 13, fontWeight: '600', color: active ? colors.ink : colors.muted }}>{t(item.label)}</Text>
           </Pressable>
         );
       })}

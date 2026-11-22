@@ -6,7 +6,7 @@
 
 export type Actor = {
   userId: string;
-  role: 'trainer' | 'client';
+  role: 'trainer' | 'client' | 'admin';
   trainerId: string;
 };
 
@@ -22,11 +22,13 @@ export type AccessRow = {
 export type AccessAction = 'select' | 'insert' | 'update' | 'delete';
 
 export function canAccess(actor: Actor, action: AccessAction, table: AccessTable, row: AccessRow): boolean {
-  const ownTrainer = actor.role === 'trainer' && row.trainerId === actor.userId;
+  const staff = actor.role === 'trainer' || actor.role === 'admin';
+  const ownTrainer = staff && row.trainerId === actor.userId;
   const ownClient = actor.role === 'client' && row.clientId === actor.userId && row.trainerId === actor.trainerId;
-  const seesLibrary = row.trainerId === actor.trainerId;
+  const seesLibrary = row.trainerId === actor.trainerId || actor.role === 'admin';
 
   if (table === 'profile') {
+    if (actor.role === 'admin') return action === 'select' || action === 'update';
     const isSelf = row.ownerId === actor.userId;
     const isOwnClient = actor.role === 'trainer' && row.trainerId === actor.userId;
     const isMyTrainer = actor.role === 'client' && row.ownerId === actor.trainerId;
@@ -36,7 +38,7 @@ export function canAccess(actor: Actor, action: AccessAction, table: AccessTable
   }
 
   if (table === 'invite') {
-    if (actor.role !== 'trainer' || row.trainerId !== actor.userId) return false;
+    if (!staff || row.trainerId !== actor.userId) return false;
     if (action === 'insert') return row.clientId == null && row.usedAt == null;
     return action === 'select' || action === 'update' || action === 'delete';
   }

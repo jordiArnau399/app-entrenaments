@@ -10,6 +10,8 @@ import { configureNotifications, scheduleDailyReminder } from '../sync/notificat
 import { signIn as authSignIn, signOutLocal, signUpClient, signUpTrainer, supabaseConfigured } from '../sync/auth';
 import { pullCloud } from '../sync/cloud';
 import { connectRemote, supabaseAccountRemote } from '../sync/remote';
+import { FONT_CSS } from '../ui/fonts';
+import { LanguageGate } from '../ui/language';
 
 type Hub = 'off' | 'connected' | 'unavailable';
 
@@ -34,16 +36,20 @@ type AppApi = {
   syncing: boolean;
   accounts: boolean;
   clearNotice: () => void;
-  signIn: (email: string, password: string) => Promise<'trainer' | 'client' | undefined>;
-  signUpAsTrainer: (name: string, email: string, password: string) => Promise<'trainer' | 'client' | undefined>;
-  signUpAsClient: (name: string, email: string, password: string, code: string) => Promise<'trainer' | 'client' | undefined>;
+  signIn: (email: string, password: string) => Promise<'trainer' | 'client' | 'admin' | undefined>;
+  signUpAsTrainer: (name: string, email: string, password: string, code?: string) => Promise<'trainer' | 'client' | 'admin' | undefined>;
+  createTrainerInvite: (name: string, email: string) => Promise<string | undefined>;
+  setLanguage: (language: 'ca' | 'es' | 'en') => Promise<void>;
+  setPersonStatus: (personId: string, status: 'active' | 'inactive') => Promise<void>;
+  moveClient: (clientId: string, trainerId: string) => Promise<void>;
+  signUpAsClient: (name: string, email: string, password: string, code: string) => Promise<'trainer' | 'client' | 'admin' | undefined>;
   signOutAccount: () => Promise<void>;
   enterTrainer: () => Promise<void>;
   enterClient: (clientId: string) => Promise<void>;
   leave: () => Promise<void>;
   setOffline: (value: boolean) => Promise<void>;
   setReminder: (time: string) => Promise<string>;
-  syncNow: () => Promise<void>;
+  syncNow: (mode?: 'full' | 'incremental') => Promise<void>;
   retrySync: () => Promise<void>;
   resetDemo: () => Promise<void>;
   addClient: (name: string, email: string) => Promise<void>;
@@ -83,7 +89,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSyncProblems(problemsOf(repo.queue));
   }, []);
 
-  const syncNow = useCallback(async () => {
+  const syncNow = useCallback(async (mode: 'full' | 'incremental' = 'full') => {
     const repo = repoRef.current;
     if (!repo || repo.snapshot.settings.offline) {
       apply();
@@ -92,7 +98,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSyncing(true);
     try {
       if (!repo.remote) repo.remote = await connectRemote();
-      const result = await repo.flush();
+      const result = await repo.flush(mode);
       setHub(!repo.remote ? 'off' : result === 'error' ? 'unavailable' : 'connected');
       apply();
     } finally {
@@ -113,12 +119,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       const fontId = 'ritme-fonts';
       if (!document.getElementById(fontId)) {
-        const link = document.createElement('link');
-        link.id = fontId;
-        link.rel = 'stylesheet';
-        link.href =
-          'https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,600&family=Outfit:wght@400;500;600&display=swap';
-        document.head.appendChild(link);
+        const style = document.createElement('style');
+        style.id = fontId;
+        style.textContent = FONT_CSS;
+        document.head.appendChild(style);
       }
     }
     configureNotifications().catch(() => undefined);
@@ -131,7 +135,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setHub(repo.remote ? 'connected' : 'off');
         setReady(true);
         if (!repo.snapshot.settings.offline) {
-          const result = await repo.flush();
+          const result = await repo.flush('full');
           if (!alive) return;
           setHub(!repo.remote ? 'off' : result === 'error' ? 'unavailable' : 'connected');
           apply();
@@ -142,7 +146,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     })();
     const timer = setInterval(() => {
-      syncNow().catch(() => undefined);
+      syncNow('incremental').catch(() => undefined);
     }, 12000);
     return () => {
       alive = false;
@@ -152,7 +156,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const refresh = () => {
-      syncNow().catch(() => undefined);
+      syncNow('incremental').catch(() => undefined);
     };
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') refresh();
@@ -168,7 +172,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [syncNow]);
 
   const enterAccount = useCallback(
-    async (start: () => Promise<{ userId: string }>): Promise<'trainer' | 'client' | undefined> => {
+    async (start: () => Promise<{ userId: string }>): Promise<'trainer' | 'client' | 'admin' | undefined> => {
       const repo = repoRef.current;
       if (!repo) return undefined;
       try {
@@ -179,7 +183,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setHub('connected');
         apply();
         const role = repo.snapshot.settings.role;
-        if (role !== 'trainer' && role !== 'client') throw new Error('Aquest compte no té perfil');
+        if (role !== 'trainer' && role !== 'client' && role !== 'admin') throw new Error('Aquest compte no té perfil');
         return role;
       } catch (cause) {
         setNotice(cause instanceof Error ? cause.message : 'No s\'ha pogut entrar');
@@ -222,7 +226,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       accounts: supabaseConfigured(),
       clearNotice: () => setNotice(null),
       signIn: (email, password) => enterAccount(() => authSignIn(email, password)),
-      signUpAsTrainer: (name, email, password) => enterAccount(() => signUpTrainer(name, email, password)),
+      signUpAsTrainer: (name, email, password, code) => enterAccount(() => signUpTrainer(name, email, password, code)),
+      createTrainerInvite: (name, email) => run((repo) => repo.createInvite(name, email, 'trainer')),
+      setLanguage: (language) => run((repo) => repo.setLanguage(language)).then(() => undefined),
+      setPersonStatus: (personId, status) => run((repo) => repo.setPersonStatus(personId, status)).then(() => undefined),
+      moveClient: (clientId, trainerId) => run((repo) => repo.moveClient(clientId, trainerId)).then(() => undefined),
       signUpAsClient: (name, email, password, code) => enterAccount(() => signUpClient(name, email, password, code)),
       signOutAccount: async () => {
         signOutLocal();
@@ -266,7 +274,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [ready, error, notice, snapshot, pending, syncProblems, hub, syncing, run, syncNow, enterAccount],
   );
 
-  return <AppContext.Provider value={api}>{children}</AppContext.Provider>;
+  return (
+    <AppContext.Provider value={api}>
+      <LanguageGate language={snapshot?.settings.language}>{children}</LanguageGate>
+    </AppContext.Provider>
+  );
 }
 
 export function useApp(): AppApi {

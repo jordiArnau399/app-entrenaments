@@ -10,7 +10,7 @@ describe('vídeo d’un exercici', () => {
     expect(classifyVideo('https://vimeo.com/123456789')).toBe('vimeo');
     expect(classifyVideo('https://cdn.exemple.cat/esquat.mp4')).toBe('file');
     expect(classifyVideo('storage:exercise-videos/trainer/ex/clip.mp4')).toBe('storage');
-    expect(embedSource('https://youtu.be/abcdefghijk')?.src).toBe('https://www.youtube.com/embed/abcdefghijk');
+    expect(embedSource('https://youtu.be/abcdefghijk')?.src).toBe('https://www.youtube-nocookie.com/embed/abcdefghijk?playsinline=1&rel=0');
     expect(embedSource('https://vimeo.com/video/99')?.src).toBe('https://player.vimeo.com/video/99');
     expect(embedSource('https://cdn.exemple.cat/esquat.mp4')).toEqual({ kind: 'video', src: 'https://cdn.exemple.cat/esquat.mp4' });
     expect(embedSource('')).toBeNull();

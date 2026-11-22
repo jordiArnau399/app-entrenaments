@@ -3,6 +3,7 @@ import { Pressable, View } from 'react-native';
 import { greeting, todayIso } from '../../src/domain/dates';
 import { clientReport, sessionOnDate } from '../../src/domain/report';
 import { effectiveStatus } from '../../src/domain/compliance';
+import { currentUserName } from '../../src/domain/actor';
 import { useSnapshot } from '../../src/state/store';
 import { PageIntro, Screen } from '../../src/ui/shell';
 import { colors } from '../../src/ui/theme';
@@ -10,12 +11,12 @@ import { Card, Pill, T } from '../../src/ui/ui';
 
 export default function TrainerHome() {
   const snapshot = useSnapshot();
-  const today = todayIso();
+  const todayFor = (zone?: string | null) => todayIso(new Date(), zone ?? snapshot.settings.timezone);
   const reports = snapshot.clients.map((client) => ({
     client,
     report: clientReport({
       clientId: client.id,
-      today,
+      today: todayFor(client.timezone),
       plans: snapshot.plans,
       sessions: snapshot.sessions,
       logs: snapshot.logs,
@@ -27,12 +28,13 @@ export default function TrainerHome() {
     ? Math.round(withDue.reduce((sum, item) => sum + item.report.weekCompliance.percent, 0) / withDue.length)
     : 0;
   const pendingToday = snapshot.clients.filter((client) => {
-    const session = sessionOnDate(snapshot.sessions, snapshot.plans, client.id, today);
-    return session && effectiveStatus(session.status, session.date, today) === 'pending';
+    const day = todayFor(client.timezone);
+    const session = sessionOnDate(snapshot.sessions, snapshot.plans, client.id, day);
+    return session && effectiveStatus(session.status, session.date, day) === 'pending';
   }).length;
   return (
     <Screen>
-      <PageIntro eyebrow={greeting()} title={snapshot.trainers[0].name} detail="Això és el que han fet els teus clients." />
+      <PageIntro eyebrow={greeting(new Date(), snapshot.settings.timezone)} title={currentUserName(snapshot)} detail="Això és el que han fet els teus clients." />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
         <Metric value={String(snapshot.clients.length)} label="Clients actius" />
         <Metric value={`${weekAverage}%`} label="Compliment d'aquesta setmana" />
@@ -59,8 +61,9 @@ export default function TrainerHome() {
         <T variant="section">Avui</T>
         <View style={{ gap: 10, marginTop: 8 }}>
           {snapshot.clients.map((client) => {
-            const session = sessionOnDate(snapshot.sessions, snapshot.plans, client.id, today);
-            const status = session ? effectiveStatus(session.status, session.date, today) : null;
+            const day = todayFor(client.timezone);
+            const session = sessionOnDate(snapshot.sessions, snapshot.plans, client.id, day);
+            const status = session ? effectiveStatus(session.status, session.date, day) : null;
             return (
               <View key={client.id} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
                 <T>{client.name}</T>

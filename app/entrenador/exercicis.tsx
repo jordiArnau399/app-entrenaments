@@ -36,7 +36,7 @@ export default function ExercisesScreen() {
 
   const upload = async () => {
     if (editing === 'nou' || !editing || Platform.OS !== 'web' || typeof document === 'undefined') return;
-    const trainerId = snapshot.settings.userId ?? snapshot.trainers[0]?.id;
+    const trainerId = snapshot.settings.userId ?? snapshot.settings.trainerId;
     if (!trainerId) return;
     const file = await new Promise<File | null>((resolve) => {
       const input = document.createElement('input');

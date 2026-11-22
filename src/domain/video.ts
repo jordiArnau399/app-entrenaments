@@ -24,7 +24,7 @@ export function embedSource(url: string): { kind: 'iframe' | 'video'; src: strin
   const kind = classifyVideo(url);
   if (kind === 'youtube') {
     const id = youtubeId(url);
-    return id ? { kind: 'iframe', src: `https://www.youtube.com/embed/${id}` } : null;
+    return id ? { kind: 'iframe', src: `https://www.youtube-nocookie.com/embed/${id}?playsinline=1&rel=0` } : null;
   }
   if (kind === 'vimeo') {
     const id = vimeoId(url);

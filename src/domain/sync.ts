@@ -10,7 +10,8 @@ export type SyncEntity =
   | 'session_log'
   | 'invite'
   | 'message'
-  | 'notification';
+  | 'notification'
+  | 'profile';
 
 export type SyncOp = {
   id: string;
@@ -47,6 +48,8 @@ export function enqueue(queue: SyncOp[], draft: SyncDraft): SyncOp[] {
   ];
 }
 
+export const SYNC_ATTEMPT_LIMIT = 8;
+
 export function pendingOps(queue: SyncOp[]): SyncOp[] {
   return queue.filter((op) => op.status === 'pending' || op.status === 'failed');
 }
@@ -56,7 +59,7 @@ export async function processQueue(
   send: (op: SyncOp) => Promise<void>,
   opts?: { maxAttempts?: number },
 ): Promise<{ queue: SyncOp[]; syncedIds: string[]; failedIds: string[] }> {
-  const maxAttempts = opts?.maxAttempts ?? 5;
+  const maxAttempts = opts?.maxAttempts ?? SYNC_ATTEMPT_LIMIT;
   const next: SyncOp[] = [];
   const syncedIds: string[] = [];
   const failedIds: string[] = [];
@@ -113,6 +116,24 @@ export function resolveSyncConflict(
   return latest;
 }
 
+function mergePlans(local: Snapshot['plans'], remote: Snapshot['plans']): Snapshot['plans'] {
+  const map = new Map(remote.map((plan) => [plan.id, plan]));
+  for (const plan of local) {
+    const other = map.get(plan.id);
+    if (!other) {
+      map.set(plan.id, plan);
+      continue;
+    }
+    const chosen = resolveSyncConflict(
+      'plan',
+      { origin: 'trainer', updatedAt: plan.updatedAt, value: 'local' },
+      { origin: 'trainer', updatedAt: other.updatedAt, value: 'remote' },
+    );
+    map.set(plan.id, chosen.value === 'local' ? plan : other);
+  }
+  return [...map.values()];
+}
+
 function latestByUpdatedAt<T extends { id: string; updatedAt: string }>(local: T[], remote: T[]): T[] {
   const map = new Map<string, T>();
   for (const item of remote) map.set(item.id, item);
@@ -149,11 +170,16 @@ function mergeLogs(local: SessionLog[], remote: SessionLog[]): SessionLog[] {
   const map = new Map(remote.map((log) => [log.id, log]));
   for (const log of local) {
     const other = map.get(log.id);
-    if (!other || log.syncStatus === 'pending') {
+    if (!other) {
       map.set(log.id, log);
       continue;
     }
-    map.set(log.id, log.updatedAt >= other.updatedAt ? log : other);
+    const chosen = resolveSyncConflict(
+      'session_log',
+      { origin: log.syncStatus === 'pending' ? 'client' : 'server', updatedAt: log.updatedAt, value: 'local' },
+      { origin: 'server', updatedAt: other.updatedAt, value: 'remote' },
+    );
+    map.set(log.id, chosen.value === 'local' ? log : other);
   }
   return [...map.values()];
 }
@@ -166,7 +192,7 @@ export function mergeSnapshots(local: Snapshot, remote: DataCollections | null):
     clients: latestByUpdatedAt(local.clients, remote.clients),
     exercises: latestByUpdatedAt(local.exercises, remote.exercises),
     templates: latestByUpdatedAt(local.templates, remote.templates),
-    plans: latestByUpdatedAt(local.plans, remote.plans),
+    plans: mergePlans(local.plans, remote.plans),
     sessions: mergeSessions(local.sessions, remote.sessions),
     logs: mergeLogs(local.logs, remote.logs),
     invites: latestByUpdatedAt(local.invites ?? [], remote.invites ?? []),

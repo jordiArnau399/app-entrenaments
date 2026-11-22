@@ -9,5 +9,7 @@ describe('portes de client i entrenador', () => {
     expect(doorFor('trainer', null)).toBe('login');
     expect(doorFor('trainer', 'trainer')).toBe('enter');
     expect(doorFor('trainer', 'client')).toBe('wrong');
+    expect(doorFor('trainer', 'admin')).toBe('enter');
+    expect(doorFor('client', 'admin')).toBe('wrong');
   });
 });

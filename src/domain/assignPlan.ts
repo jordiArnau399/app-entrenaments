@@ -108,6 +108,7 @@ export function fillMissingPlanSessions(
 ): PlannedSession[] {
   const extra: PlannedSession[] = [];
   for (const plan of plans) {
+    if (plan.status !== 'active') continue;
     if (sessions.some((session) => session.planId === plan.id)) continue;
     extra.push(...sessionsForPlan(plan, nowIso, ids));
   }
@@ -274,6 +275,64 @@ export function removePlanExercise(
     (exercise) => (exercise.sourceItemId === input.itemId ? null : exercise),
   );
   return { plan, sessions };
+}
+
+/**
+ * Tanca el pla actiu el dia abans i posa la plantilla nova a partir d'avui.
+ * Les sessions ja fetes o passades es queden. Les pendents d'avui en endavant se substitueixen.
+ */
+export function replaceClientPlan(input: {
+  plans: AssignedPlan[];
+  sessions: PlannedSession[];
+  logs: { plannedSessionId: string }[];
+  template: Template;
+  clientId: string;
+  trainerId: string;
+  startDate: string;
+  weeks: number;
+  nowIso: string;
+  ids?: IdFactory;
+}): { plans: AssignedPlan[]; sessions: PlannedSession[]; removedSessionIds: string[]; plan: AssignedPlan } {
+  if (!isIsoDate(input.startDate)) throw new Error("Data d'inici invàlida");
+  const logged = new Set(input.logs.map((log) => log.plannedSessionId));
+  const activeIds = new Set(
+    input.plans.filter((plan) => plan.clientId === input.clientId && plan.status === 'active').map((plan) => plan.id),
+  );
+  const closedEnd = addDays(input.startDate, -1);
+  const plans = input.plans.map((plan) => {
+    if (!activeIds.has(plan.id)) return plan;
+    return {
+      ...plan,
+      status: 'completed' as const,
+      endDate: closedEnd < plan.startDate ? plan.startDate : closedEnd,
+      updatedAt: input.nowIso,
+    };
+  });
+  const removedSessionIds: string[] = [];
+  const kept = input.sessions.filter((session) => {
+    if (!activeIds.has(session.planId)) return true;
+    const drop = session.date >= input.startDate && session.status === 'pending' && !logged.has(session.id);
+    if (drop) removedSessionIds.push(session.id);
+    return !drop;
+  });
+  const assigned = assignTemplate({
+    template: input.template,
+    clientId: input.clientId,
+    trainerId: input.trainerId,
+    startDate: input.startDate,
+    weeks: input.weeks,
+    nowIso: input.nowIso,
+    ids: input.ids,
+  });
+  const occupied = new Set(
+    kept.filter((session) => session.clientId === input.clientId && session.date >= input.startDate).map((session) => session.date),
+  );
+  return {
+    plans: [...plans, assigned.plan],
+    sessions: [...kept, ...assigned.sessions.filter((session) => !occupied.has(session.date))],
+    removedSessionIds,
+    plan: assigned.plan,
+  };
 }
 
 export function pauseOtherPlans(

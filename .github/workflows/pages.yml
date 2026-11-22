@@ -30,6 +30,12 @@ jobs:
       - name: Dependències
         run: npm ci
 
+      - name: Proves
+        run: npm test
+
+      - name: Tipus
+        run: npx tsc --noEmit
+
       - name: Exporta la web
         run: npx expo export --platform web
         env:
