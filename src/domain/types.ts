@@ -17,6 +17,10 @@ export type Trainer = {
   id: string;
   name: string;
   email: string;
+  status?: 'active' | 'inactive';
+  timezone?: string;
+  language?: 'ca' | 'es' | 'en' | null;
+  version?: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -27,6 +31,9 @@ export type Client = {
   name: string;
   email: string;
   status: 'active' | 'inactive';
+  timezone?: string;
+  language?: 'ca' | 'es' | 'en' | null;
+  version?: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -42,6 +49,7 @@ export type Exercise = {
   imageUrl: string | null;
   /** Fase 2: vídeo. El camp hi és; l'editor del MVP no el demana. */
   videoUrl: string | null;
+  version?: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -84,6 +92,7 @@ export type Template = {
   name: string;
   description: string;
   days: PlanDay[];
+  version?: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -99,6 +108,7 @@ export type AssignedPlan = {
   status: 'active' | 'paused' | 'completed';
   /** Còpia independent de la plantilla. */
   days: PlanDay[];
+  version?: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -112,6 +122,7 @@ export type PlannedSession = {
   name: string;
   status: SessionStatus;
   exercises: ExerciseTarget[];
+  version?: number;
   updatedAt: string;
 };
 
@@ -149,6 +160,7 @@ export type SessionLog = {
   exercises: ExerciseLog[];
   syncStatus: SyncStatus;
   deviceId: string;
+  version?: number;
   updatedAt: string;
 };
 
@@ -183,6 +195,8 @@ export type Invite = {
   name: string;
   email: string;
   code: string;
+  /** client: alta de client. trainer: alta d'entrenador, només la crea l'administrador. */
+  kind?: 'client' | 'trainer';
   clientId: string | null;
   usedAt: string | null;
   createdAt: string;
@@ -192,13 +206,17 @@ export type Invite = {
 export type Settings = {
   offline: boolean;
   reminderTime: string;
-  role: 'trainer' | 'client' | null;
+  role: 'trainer' | 'client' | 'admin' | null;
   trainerId: string | null;
   clientId: string | null;
   deviceId: string;
   /** Sense Supabase, la demostració. Amb compte, les dades del núvol. */
   mode?: 'demo' | 'account';
   userId?: string | null;
+  /** Fus del compte. Les dates de sessió es llegeixen en el fus del client. */
+  timezone?: string | null;
+  language?: 'ca' | 'es' | 'en' | null;
+  syncCursors?: Record<string, string>;
 };
 
 export type DataCollections = {

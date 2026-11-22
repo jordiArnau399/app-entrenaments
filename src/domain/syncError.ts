@@ -11,6 +11,7 @@ const TITLE: Record<SyncEntity, string> = {
   trainer: 'Entrenador',
   message: 'Missatge',
   notification: 'Avís',
+  profile: 'Perfil',
 };
 
 /** El text que veu l'entrenador quan Supabase rebutja un element de la cua. */
@@ -24,6 +25,9 @@ export function explainSyncError(raw: string): string {
   }
   if (/JWT expired|Invalid JWT|PGRST301/i.test(text)) {
     return 'La sessió ha caducat. Tanca-la i torna a entrar.';
+  }
+  if (/Conflicte de versió/i.test(text)) {
+    return 'Algú altre ha desat això abans. Torna a provar: es baixarà la còpia nova.';
   }
   if (/Could not find the '.+' column/i.test(text)) {
     return `Falta una columna a Supabase. ${text}`;
@@ -42,7 +46,7 @@ export function syncProblems(queue: SyncOp[]): { id: string; title: string; deta
     .map((op) => ({ id: op.id, title: syncItemTitle(op), detail: op.lastError ?? '' }));
 }
 
-const ORDER: SyncEntity[] = ['invite', 'exercise', 'template', 'plan', 'session', 'session_log', 'client', 'trainer', 'message', 'notification'];
+const ORDER: SyncEntity[] = ['invite', 'profile', 'exercise', 'template', 'plan', 'session', 'session_log', 'client', 'trainer', 'message', 'notification'];
 
 /** Plans i invitacions abans que les sessions, perquè un rebuig no deixi el pla enrere. */
 export function sortSyncOps<T extends Pick<SyncOp, 'entity' | 'createdAt'>>(ops: T[]): T[] {

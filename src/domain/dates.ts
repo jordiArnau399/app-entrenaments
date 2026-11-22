@@ -42,8 +42,29 @@ export function eachDate(from: string, to: string): string[] {
   return dates;
 }
 
-export function todayIso(now = new Date()): string {
-  return formatISODate(now);
+/** Dia civil. Amb fus horari, és el dia d'aquella zona, no el de l'aparell. */
+export function todayIso(now = new Date(), timeZone?: string | null): string {
+  if (!timeZone) return formatISODate(now);
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now);
+  const year = parts.find((part) => part.type === 'year')?.value;
+  const month = parts.find((part) => part.type === 'month')?.value;
+  const day = parts.find((part) => part.type === 'day')?.value;
+  return `${year}-${month}-${day}`;
+}
+
+export function hourInZone(now = new Date(), timeZone?: string | null): number {
+  if (!timeZone) return now.getHours();
+  const value = new Intl.DateTimeFormat('en-GB', { timeZone, hour: '2-digit', hourCycle: 'h23' }).format(now);
+  return Number(value);
+}
+
+export function deviceTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Madrid';
 }
 
 const MONTHS = [
@@ -88,8 +109,8 @@ export function capitalize(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-export function greeting(date = new Date()): string {
-  const hour = date.getHours();
+export function greeting(date = new Date(), timeZone?: string | null): string {
+  const hour = hourInZone(date, timeZone);
   if (hour < 12) return 'Bon dia';
   if (hour < 19) return 'Bona tarda';
   return 'Bon vespre';

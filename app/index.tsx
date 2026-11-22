@@ -14,7 +14,8 @@ export default function EntryScreen() {
   const app = useApp();
   const { ready, error, snapshot, enterClient, resetDemo, accounts } = app;
   const signedIn = Boolean(accounts && snapshot?.settings.mode === 'account');
-  const role = signedIn && (snapshot?.settings.role === 'client' || snapshot?.settings.role === 'trainer') ? snapshot.settings.role : null;
+  const accountRole = snapshot?.settings.role;
+  const role = signedIn && (accountRole === 'client' || accountRole === 'trainer' || accountRole === 'admin') ? accountRole : null;
   const door = doorFor('client', role);
   useEffect(() => {
     if (ready && door === 'enter') router.replace('/client');

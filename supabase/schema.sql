@@ -2,5 +2,6 @@
 -- L'esquema amb les polítiques de seguretat és, en aquest ordre:
 --   supabase/migrations/20261121120000_accounts.sql
 --   supabase/migrations/20261121150000_exercise_videos.sql
+--   supabase/migrations/20261122120000_motor.sql
 -- La llavor (buida) és:
 --   supabase/seed.sql

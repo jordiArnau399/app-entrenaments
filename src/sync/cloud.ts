@@ -56,19 +56,38 @@ function actorOf(snapshot: Snapshot): Actor | null {
   const userId = snapshot.settings.userId;
   const role = snapshot.settings.role;
   const trainerId = snapshot.settings.trainerId;
-  if (!userId || (role !== 'trainer' && role !== 'client') || !trainerId) return null;
+  if (!userId || (role !== 'trainer' && role !== 'client' && role !== 'admin') || !trainerId) return null;
   return { userId, role, trainerId };
 }
 
-export async function pullCloud(): Promise<CloudBundle> {
+const PAGE = 1000;
+
+async function pullPages<T>(path: string, cursor?: string): Promise<T[]> {
+  const rows: T[] = [];
+  let offset = 0;
+  const since = cursor ? `&updated_at=gt.${encodeURIComponent(cursor)}` : '';
+  for (;;) {
+    const batch = await request<T[]>(`${path}${path.includes('?') ? '&' : '?'}select=*&order=updated_at.asc${since}`, {
+      headers: { Range: `${offset}-${offset + PAGE - 1}` },
+    });
+    const page = batch ?? [];
+    rows.push(...page);
+    if (page.length < PAGE) break;
+    offset += PAGE;
+  }
+  return rows;
+}
+
+export async function pullCloud(cursors?: Record<string, string>, incremental = false): Promise<CloudBundle> {
+  const cursor = (table: string) => (incremental ? cursors?.[table] : undefined);
   const [profiles, invites, exercises, templates, plans, sessions, logs] = await Promise.all([
-    request<Array<Record<string, string | null>>>('profiles?select=*'),
-    request<InviteRow[]>('invites?select=*'),
-    request<CloudRow[]>('exercises?select=*'),
-    request<CloudRow[]>('templates?select=*'),
-    request<CloudRow[]>('plans?select=*'),
-    request<CloudRow[]>('sessions?select=*'),
-    request<CloudRow[]>('session_logs?select=*'),
+    pullPages<Record<string, string | null>>('profiles', cursor('profiles')),
+    pullPages<InviteRow>('invites', cursor('invites')),
+    pullPages<CloudRow>('exercises', cursor('exercises')),
+    pullPages<CloudRow>('templates', cursor('templates')),
+    pullPages<CloudRow>('plans', cursor('plans')),
+    pullPages<CloudRow>('sessions', cursor('sessions')),
+    pullPages<CloudRow>('session_logs', cursor('session_logs')),
   ]);
   return {
     profiles: (profiles ?? []).map(readProfile),
@@ -84,11 +103,14 @@ export async function pullCloud(): Promise<CloudBundle> {
 function readProfile(row: Record<string, string | null>): ProfileRecord {
   return {
     id: row.id ?? '',
-    role: row.role === 'client' ? 'client' : 'trainer',
+    role: row.role === 'client' ? 'client' : row.role === 'admin' ? 'admin' : 'trainer',
     name: row.name ?? '',
     email: row.email ?? '',
     trainerId: row.trainer_id,
     status: row.status === 'inactive' ? 'inactive' : 'active',
+    timezone: row.timezone,
+    language: row.language === 'es' || row.language === 'en' || row.language === 'ca' ? row.language : null,
+    version: Number(row.version ?? 1) || 1,
     createdAt: row.created_at ?? new Date().toISOString(),
     updatedAt: row.updated_at ?? new Date().toISOString(),
   };
@@ -109,6 +131,10 @@ export async function pushCloud(snapshot: Snapshot, ops: SyncOp[]): Promise<void
   const actor = actorOf(snapshot);
   if (!actor) throw new Error('Torna a entrar per desar els canvis al núvol');
   for (const op of ops) {
+    if (op.entity === 'profile') {
+      await pushProfile(snapshot, op);
+      continue;
+    }
     const table = SQL_TABLE[op.entity];
     if (!table) continue;
     if (op.op === 'delete') {
@@ -146,6 +172,24 @@ export async function pushCloud(snapshot: Snapshot, ops: SyncOp[]): Promise<void
       body: JSON.stringify(row),
     });
   }
+}
+
+async function pushProfile(snapshot: Snapshot, op: SyncOp): Promise<void> {
+  const trainer = snapshot.trainers.find((item) => item.id === op.entityId);
+  const client = snapshot.clients.find((item) => item.id === op.entityId);
+  const person = trainer ?? client;
+  if (!person) return;
+  const body: Record<string, unknown> = {};
+  if (person.status) body.status = person.status;
+  if (client) body.trainer_id = client.trainerId;
+  if (person.timezone) body.timezone = person.timezone;
+  if (person.language) body.language = person.language;
+  if (person.version != null) body.version = person.version;
+  await request(`profiles?id=eq.${encodeURIComponent(op.entityId)}`, {
+    method: 'PATCH',
+    headers: { Prefer: 'return=minimal' },
+    body: JSON.stringify(body),
+  });
 }
 
 function rowFor(snapshot: Snapshot, op: SyncOp): Record<string, unknown> | null {

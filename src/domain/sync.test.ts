@@ -62,13 +62,13 @@ describe('cua de sincronització', () => {
     expect(first.queue.find((op) => op.id === 'done')?.status).toBe('synced');
 
     let failing = first.queue;
-    for (let attempt = 0; attempt < 4; attempt += 1) {
+    for (let attempt = 0; attempt < 7; attempt += 1) {
       failing = (await processQueue(failing, async (op) => {
         if (op.entityId === 'log_ko') throw new Error('sense xarxa');
       })).queue;
     }
     expect(failing.find((op) => op.id === 'ko')?.status).toBe('failed');
-    expect(failing.find((op) => op.id === 'ko')?.attempts).toBe(5);
+    expect(failing.find((op) => op.id === 'ko')?.attempts).toBe(8);
   });
 
   it('el registre del client i el pla de l’entrenador guanyen el conflicte', () => {

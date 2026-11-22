@@ -2,7 +2,7 @@
 
 App per a entrenadors personals i els seus clients. L'entrenador prepara exercicis, plantilles i plans. El client veu què toca avui, ho anota (també sense cobertura) i en segueix el resultat.
 
-De moment és per a l'ús intern de Jordi Arnau. El model de dades ja està preparat per a més d'un entrenador: cada client, exercici i pla pengen d'un entrenador.
+És l'eina de Jordi Arnau i dels entrenadors que ell convida. Cada client està lligat a un entrenador, i aquest lligam es pot canviar: l'historial es conserva. Els entrenadors nous no es registren sols; cal un codi. El compte `jordiarnau@gmail.com` és l'administrador.
 
 La mateixa app serveix per al telèfon (iOS i Android, amb Expo Go) i per a l'ordinador. Al navegador, l'entrenador té una vista ampla: menú lateral, taules i gràfics grans.
 
@@ -24,7 +24,7 @@ El repositori és privat. GitHub només publica GitHub Pages d'un repositori pri
 
 ## Comptes reals (Supabase)
 
-La web publicada segueix en mode demostració fins que enganxes les claus del núvol. Quan ho facis, la primera pantalla demana correu i contrasenya. Cada entrenador només veu els seus clients. Cada client només veu el seu pla. Això ho controla la base de dades, no només l'app. Al telèfon les dades es guarden primer a l'aparell i després es sincronitzen.
+La web publicada segueix en mode demostració fins que enganxes les claus del núvol. Quan ho facis, la primera pantalla demana correu i contrasenya. Cada entrenador només veu els seus clients. Cada client només veu el seu pla i només pot anotar el que ha fet, no canviar el pla. Això ho controla la base de dades. Les dates de les sessions són el dia del client: un entrenador a Austràlia veu el dia d'Espanya si el client és a Espanya. L'app es pot posar en català, castellà o anglès. Al telèfon les dades es guarden primer a l'aparell i després es sincronitzen. **Publica la web** executa les proves abans de publicar: si fallen, la web no canvia.
 
 Encara no tens projecte de Supabase. Fes això una vegada:
 
@@ -34,7 +34,7 @@ Encara no tens projecte de Supabase. Fes això una vegada:
    - **Project URL** (sembla `https://abcd.supabase.co`)
    - **anon public** (una clau llarga, dins API Keys)
 4. Al menú esquerre, **SQL Editor** → **New query**. Obre el fitxer `supabase/migrations/20261121120000_accounts.sql` d'aquest projecte, copia'l tot, enganxa'l a l'editor i prem **Run**. Ha de dir que ha anat bé.
-5. Nova consulta. Obre `supabase/seed.sql`, copia'l, enganxa'l i prem **Run**. No crea usuaris: el primer entrenador es registra des de l'app.
+5. Si encara no ho has fet, enganxa també `supabase/migrations/20261121150000_exercise_videos.sql` i `supabase/migrations/20261122120000_motor.sql`, cadascun en una consulta, en aquest ordre, i prem **Run**. El segon fa administrador el compte `jordiarnau@gmail.com`. Si aquest compte encara no existeix, el primer registre amb aquest correu el crea com a administrador sense codi. La resta d'entrenadors necessiten un codi.
 6. Al menú esquerre, **Authentication** → **Sign In / Providers** → **Email**. Desactiva **Confirm email** i desa. Si el deixes activat, cal obrir el correu abans de poder entrar.
 7. **Authentication** → **URL Configuration**.
    - **Site URL**: `https://jordiarnau399.github.io/app-entrenaments`
@@ -53,7 +53,7 @@ A la biblioteca, enganxa un enllaç de YouTube, Vimeo o un mp4, o puja un vídeo
 
 Per donar d'alta algú:
 
-1. Tu obres [https://jordiarnau399.github.io/app-entrenaments/entrenador](https://jordiarnau399.github.io/app-entrenaments/entrenador) i et registres amb **Soc entrenador nou**.
+1. Tu obres [https://jordiarnau399.github.io/app-entrenaments/entrenador](https://jordiarnau399.github.io/app-entrenaments/entrenador). Si el correu és `jordiarnau@gmail.com`, et pots registrar sense codi i entres com a administrador. Els altres entrenadors escriuen el codi que els has creat a **Administració**.
 2. A **Clients** → **Nou client**, escrius el nom i el correu i prems **Crea el codi**. L'app et mostra un codi de 6 lletres.
 3. El client obre [https://jordiarnau399.github.io/app-entrenaments/](https://jordiarnau399.github.io/app-entrenaments/), tria **Tinc un codi d'invitació** i escriu el seu correu, una contrasenya i el codi.
 

@@ -1,6 +1,7 @@
 import { Slot, router } from 'expo-router';
 import { View } from 'react-native';
 import { doorFor } from '../../src/domain/entry';
+import { TRAINER_ID } from '../../src/domain/types';
 import { useApp } from '../../src/state/store';
 import { AccountForm, DoorFrame, WrongDoor } from '../../src/ui/AccountDoor';
 import { Boot, BottomNav, TopBar, TrainerSidebar, trainerNav, useWide } from '../../src/ui/shell';
@@ -11,15 +12,25 @@ export default function TrainerLayout() {
   const { ready, error, snapshot, accounts, enterTrainer } = useApp();
   const wide = useWide();
   const signedIn = Boolean(accounts && snapshot?.settings.mode === 'account');
-  const role = signedIn && (snapshot?.settings.role === 'client' || snapshot?.settings.role === 'trainer')
-    ? snapshot.settings.role
-    : snapshot?.settings.role === 'trainer'
+  const accountRole = snapshot?.settings.role;
+  const role = signedIn && (accountRole === 'client' || accountRole === 'trainer' || accountRole === 'admin')
+    ? accountRole
+    : accountRole === 'trainer'
       ? 'trainer'
       : null;
   const door = doorFor('trainer', role);
   if (error) return <Boot message={error} />;
   if (!ready || !snapshot) return <Boot />;
   if (door === 'wrong') return <WrongDoor page="trainer" />;
+  const me = snapshot.trainers.find((trainer) => trainer.id === snapshot.settings.userId);
+  if (signedIn && me?.status === 'inactive') {
+    return (
+      <DoorFrame>
+        <T variant="title">Compte desactivat</T>
+        <T color={colors.muted}>L’administrador ha aturat aquest compte d’entrenador. Quan el reactivi, torna a entrar.</T>
+      </DoorFrame>
+    );
+  }
   if (door !== 'enter') {
     if (accounts && snapshot.settings.mode !== 'account') {
       return (
@@ -29,7 +40,7 @@ export default function TrainerLayout() {
         </DoorFrame>
       );
     }
-    const trainer = snapshot.trainers[0];
+    const trainer = snapshot.trainers.find((item) => item.id === TRAINER_ID);
     return (
       <DoorFrame>
         <Card>
@@ -49,7 +60,15 @@ export default function TrainerLayout() {
       <View style={{ flex: 1 }}>
         <Slot />
       </View>
-      {wide ? null : <BottomNav items={trainerNav} />}
+      {wide ? null : (
+        <BottomNav
+          items={
+            snapshot.settings.role === 'admin'
+              ? [...trainerNav, { href: '/entrenador/admin', label: 'Administració', active: (path) => path.startsWith('/entrenador/admin') }]
+              : trainerNav
+          }
+        />
+      )}
     </View>
   );
 }

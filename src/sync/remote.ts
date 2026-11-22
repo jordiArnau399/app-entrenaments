@@ -63,10 +63,10 @@ export function hubRemote(baseUrl: string): RemoteStore {
 export function supabaseAccountRemote(): RemoteStore {
   return {
     name: 'supabase',
-    async pull() {
+    async pull(options) {
       const session = await freshAuth();
       if (!session) return null;
-      const bundle = await pullCloud();
+      const bundle = await pullCloud(options?.cursors, options?.incremental === true);
       const snapshot = snapshotFromCloud(bundle, session.userId, 'cloud');
       return {
         trainers: snapshot.trainers,

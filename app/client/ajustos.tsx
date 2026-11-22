@@ -1,20 +1,32 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { useApp, useSnapshot } from '../../src/state/store';
+import { useLang } from '../../src/ui/language';
 import { PageIntro, Screen, syncCopy } from '../../src/ui/shell';
 import { colors } from '../../src/ui/theme';
-import { Button, Card, Field, T, Toggle } from '../../src/ui/ui';
+import { Button, Card, Field, Pill, T, Toggle } from '../../src/ui/ui';
 
 export default function SettingsScreen() {
   const snapshot = useSnapshot();
-  const { pending, hub, setOffline, setReminder, syncNow, leave, signOutAccount, syncing } = useApp();
+  const { pending, hub, setOffline, setReminder, syncNow, leave, signOutAccount, syncing, setLanguage } = useApp();
+  const lang = useLang();
   const [time, setTime] = useState(snapshot.settings.reminderTime);
   const [feedback, setFeedback] = useState<string | null>(null);
   const sync = syncCopy(snapshot.settings.offline, pending, hub);
   return (
     <Screen narrow>
       <PageIntro title="Ajustos" detail="El pla i els registres es guarden primer al telèfon." />
+      <Card style={{ gap: 8 }}>
+        <T variant="label">Llengua</T>
+        <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+          {(['ca', 'es', 'en'] as const).map((code) => (
+            <Pressable key={code} onPress={() => setLanguage(code)}>
+              <Pill label={code === 'ca' ? 'Català' : code === 'es' ? 'Español' : 'English'} tone={lang === code ? 'accent' : 'neutral'} />
+            </Pressable>
+          ))}
+        </View>
+      </Card>
       <Card style={{ gap: 8 }}>
         <T variant="label">Sincronització</T>
         <T color={sync.color}>{syncing ? 'S’està sincronitzant…' : sync.label}</T>

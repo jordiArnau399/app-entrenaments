@@ -1,17 +1,18 @@
-import { addPlanExercise, assignTemplate, fillMissingPlanSessions, pauseOtherPlans, removePlanExercise, updatePlanTarget } from '../domain/assignPlan';
+import { currentTrainerId } from '../domain/actor';
+import { addPlanExercise, assignTemplate, fillMissingPlanSessions, pauseOtherPlans, removePlanExercise, replaceClientPlan, updatePlanTarget } from '../domain/assignPlan';
 import { createId, createIdFactory } from '../domain/ids';
 import { completeSessionsFromLogs, createSessionLog, type LogDraftExercise } from '../domain/sessionLog';
 import { buildSeed } from '../domain/seed';
 import { blankSnapshot, snapshotFromCloud, type CloudBundle } from '../domain/account';
 import { createInviteCode } from '../domain/access';
 import { explainSyncError, sortSyncOps } from '../domain/syncError';
-import { applyPendingDeletes, enqueue, pendingOps, toCollections, mergeSnapshots, type SyncOp } from '../domain/sync';
-import type { CardioTarget, DataCollections, Exercise, Invite, SessionFeeling, Snapshot, StrengthTarget, Template } from '../domain/types';
+import { SYNC_ATTEMPT_LIMIT, applyPendingDeletes, enqueue, pendingOps, toCollections, mergeSnapshots, type SyncOp } from '../domain/sync';
+import { TRAINER_ID, type CardioTarget, type DataCollections, type Exercise, type Invite, type SessionFeeling, type Snapshot, type StrengthTarget, type Template } from '../domain/types';
 import type { Storage } from './storage';
 
 export interface RemoteStore {
   name: 'hub' | 'supabase';
-  pull(): Promise<DataCollections | null>;
+  pull(options?: { incremental?: boolean; cursors?: Record<string, string> }): Promise<DataCollections | null>;
   push(data: DataCollections): Promise<void>;
   pushPending?(snapshot: Snapshot, ops: SyncOp[]): Promise<void>;
 }
@@ -70,7 +71,7 @@ export class Repository {
   }
 
   private touchQueue(entity: SyncOp['entity'], entityId: string, op: SyncOp['op'] = 'upsert'): void {
-    if (this.queue.some((item) => item.entity === entity && item.entityId === entityId && item.status !== 'synced')) return;
+    if (op !== 'delete' && this.queue.some((item) => item.entity === entity && item.entityId === entityId && item.status !== 'synced')) return;
     this.queue = enqueue(this.queue, {
       id: createId('op'),
       entity,
@@ -88,15 +89,13 @@ export class Repository {
     );
   }
 
-  async setProfile(role: 'trainer' | 'client' | null, clientId: string | null): Promise<void> {
+  async setProfile(role: 'trainer' | 'client' | 'admin' | null, clientId: string | null): Promise<void> {
+    const trainerId = role === 'client'
+      ? (this.snapshot.clients.find((client) => client.id === clientId)?.trainerId ?? null)
+      : (this.snapshot.settings.userId ?? this.snapshot.trainers.find((trainer) => trainer.id === TRAINER_ID)?.id ?? this.snapshot.settings.trainerId);
     this.snapshot = {
       ...this.snapshot,
-      settings: {
-        ...this.snapshot.settings,
-        role,
-        trainerId: this.snapshot.trainers[0]?.id ?? null,
-        clientId,
-      },
+      settings: { ...this.snapshot.settings, role, trainerId, clientId },
     };
     await this.persist();
   }
@@ -135,7 +134,8 @@ export class Repository {
     if (this.snapshot.settings.mode === 'account') return this.createInvite(name, email);
     const id = createId('cli');
     const stamp = new Date().toISOString();
-    const trainerId = this.snapshot.trainers[0].id;
+    const trainerId = currentTrainerId(this.snapshot);
+    if (!trainerId) throw new Error('Entra com a entrenador');
     this.snapshot = {
       ...this.snapshot,
       clients: [
@@ -149,8 +149,8 @@ export class Repository {
     return id;
   }
 
-  async createInvite(name: string, email: string): Promise<string> {
-    const trainerId = this.snapshot.settings.userId ?? this.snapshot.trainers[0]?.id;
+  async createInvite(name: string, email: string, kind: 'client' | 'trainer' = 'client'): Promise<string> {
+    const trainerId = currentTrainerId(this.snapshot);
     if (!trainerId) throw new Error('Entra com a entrenador per convidar un client');
     const stamp = new Date().toISOString();
     const invite: Invite = {
@@ -159,6 +159,7 @@ export class Repository {
       name: name.trim() || email.trim(),
       email: email.trim(),
       code: createInviteCode(),
+      kind,
       clientId: null,
       usedAt: null,
       createdAt: stamp,
@@ -243,7 +244,8 @@ export class Repository {
 
   async saveExercise(input: Omit<Exercise, 'id' | 'createdAt' | 'updatedAt' | 'trainerId'> & { id?: string }): Promise<string> {
     const stamp = new Date().toISOString();
-    const trainerId = this.snapshot.trainers[0].id;
+    const trainerId = currentTrainerId(this.snapshot);
+    if (!trainerId) throw new Error('Entra com a entrenador');
     const existing = input.id ? this.snapshot.exercises.find((exercise) => exercise.id === input.id) : undefined;
     const id = existing?.id ?? createId('ex');
     const exercise: Exercise = {
@@ -291,7 +293,7 @@ export class Repository {
     const template: Template = {
       ...draft,
       id,
-      trainerId: this.snapshot.trainers[0].id,
+      trainerId: currentTrainerId(this.snapshot) ?? '',
       name: draft.name.trim(),
       description: draft.description.trim(),
       createdAt: existing?.createdAt ?? stamp,
@@ -321,10 +323,37 @@ export class Repository {
     const template = this.snapshot.templates.find((item) => item.id === input.templateId);
     if (!template) throw new Error('No s’ha trobat la plantilla');
     const stamp = new Date().toISOString();
+    const trainerId = currentTrainerId(this.snapshot);
+    if (!trainerId) throw new Error('Entra com a entrenador');
+    const hasActive = this.snapshot.plans.some((plan) => plan.clientId === input.clientId && plan.status === 'active');
+    if (hasActive) {
+      const replaced = replaceClientPlan({
+        plans: this.snapshot.plans,
+        sessions: this.snapshot.sessions,
+        logs: this.snapshot.logs,
+        template,
+        clientId: input.clientId,
+        trainerId,
+        startDate: input.startDate,
+        weeks: input.weeks,
+        nowIso: stamp,
+      });
+      this.snapshot = { ...this.snapshot, plans: replaced.plans, sessions: replaced.sessions };
+      for (const plan of replaced.plans) {
+        if (plan.updatedAt === stamp) this.touchQueue('plan', plan.id);
+      }
+      for (const id of replaced.removedSessionIds) this.touchQueue('session', id, 'delete');
+      for (const session of replaced.sessions) {
+        if (session.planId === replaced.plan.id) this.touchQueue('session', session.id);
+      }
+      await this.persist();
+      await this.flush();
+      return replaced.plan.id;
+    }
     const assigned = assignTemplate({
       template,
       clientId: input.clientId,
-      trainerId: this.snapshot.trainers[0].id,
+      trainerId,
       startDate: input.startDate,
       weeks: input.weeks,
       nowIso: stamp,
@@ -462,8 +491,8 @@ export class Repository {
     return created.log.id;
   }
 
-  async flush(): Promise<'synced' | 'offline' | 'local' | 'error'> {
-    const run = this.flushChain.then(() => this.flushOnce());
+  async flush(mode: 'full' | 'incremental' = 'full'): Promise<'synced' | 'offline' | 'local' | 'error'> {
+    const run = this.flushChain.then(() => this.flushOnce(mode));
     this.flushChain = run.then(
       () => undefined,
       () => undefined,
@@ -471,7 +500,7 @@ export class Repository {
     return run;
   }
 
-  private async flushOnce(): Promise<'synced' | 'offline' | 'local' | 'error'> {
+  private async flushOnce(mode: 'full' | 'incremental'): Promise<'synced' | 'offline' | 'local' | 'error'> {
     if (this.snapshot.settings.offline) return 'offline';
     if (!this.remote) {
       await this.settleLocalQueue();
@@ -480,9 +509,9 @@ export class Repository {
     this.flushing = true;
     const hadPending = pendingOps(this.queue).length > 0;
     try {
-      const remoteData = await this.remote.pull();
+      const remoteData = await this.remote.pull({ incremental: mode === 'incremental', cursors: this.snapshot.settings.syncCursors });
       const untouched = pendingOps(this.queue).length === 0;
-      if (remoteData && remoteData.clients.length > 0 && untouched) {
+      if (mode === 'full' && remoteData && remoteData.clients.length > 0 && untouched) {
         const settings = this.snapshot.settings;
         const localInvites = this.snapshot.invites ?? [];
         this.snapshot = { ...this.snapshot, ...remoteData, settings };
@@ -497,33 +526,35 @@ export class Repository {
       }
       this.restoreMissingSessions(remoteData);
       this.repairLoggedSessions();
-      const pendingIds = new Set(pendingOps(this.queue).map((op) => op.entityId));
-      const collections = toCollections(this.snapshot);
-      collections.logs = collections.logs.map((log) =>
-        log.syncStatus === 'pending' && pendingIds.has(log.id) ? { ...log, syncStatus: 'synced' } : log,
-      );
-      const toPush = sortSyncOps(pendingOps(this.queue)).filter((op) => op.attempts < 8);
+      this.rememberCursors(remoteData);
+      const toPush = sortSyncOps(pendingOps(this.queue)).filter((op) => op.attempts < SYNC_ATTEMPT_LIMIT);
       let failed = false;
       if (this.remote.pushPending) {
         for (const op of toPush) {
           try {
-            await this.remote.pushPending({ ...this.snapshot, logs: collections.logs }, [op]);
-            this.queue = this.queue.map((item) => (item.id === op.id ? { ...item, status: 'synced', lastError: null } : item));
+            await this.remote.pushPending(this.payloadFor(op), [op]);
+            this.noteSynced(op);
           } catch (error) {
             failed = true;
             const attempts = op.attempts + 1;
             const message = explainSyncError(error instanceof Error ? error.message : 'Error de sincronització');
             this.queue = this.queue.map((item) =>
-              item.id === op.id ? { ...item, attempts, lastError: message, status: attempts >= 8 ? 'failed' : 'pending' } : item,
+              item.id === op.id ? { ...item, attempts, lastError: message, status: attempts >= SYNC_ATTEMPT_LIMIT ? 'failed' : 'pending' } : item,
             );
           }
         }
       } else if (toPush.length > 0) {
-        await this.remote.push(collections);
-        const pushedIds = new Set(toPush.map((op) => op.id));
-        this.queue = this.queue.map((op) => (pushedIds.has(op.id) ? { ...op, status: 'synced', lastError: null } : op));
+        const prepared = {
+          ...this.snapshot,
+          logs: this.snapshot.logs.map((log) =>
+            toPush.some((op) => op.entity === 'session_log' && op.entityId === log.id && op.op !== 'delete')
+              ? { ...log, syncStatus: 'synced' as const }
+              : log,
+          ),
+        };
+        await this.remote.push(toCollections(prepared));
+        for (const op of toPush) this.noteSynced(op);
       }
-      this.snapshot = { ...this.snapshot, logs: collections.logs };
       await this.persist();
       return failed ? 'error' : 'synced';
     } catch (error) {
@@ -532,7 +563,7 @@ export class Repository {
         this.queue = this.queue.map((op) => {
           if (op.status !== 'pending' && op.status !== 'failed') return op;
           const attempts = op.attempts + 1;
-          return { ...op, attempts, lastError: message, status: attempts >= 5 ? 'failed' : 'pending' };
+          return { ...op, attempts, lastError: message, status: attempts >= SYNC_ATTEMPT_LIMIT ? 'failed' : 'pending' };
         });
         await this.storage.saveQueue(this.queue);
       }
@@ -540,6 +571,93 @@ export class Repository {
     } finally {
       this.flushing = false;
     }
+  }
+
+  private payloadFor(op: SyncOp): Snapshot {
+    if (op.entity !== 'session_log' || op.op === 'delete') return this.snapshot;
+    return {
+      ...this.snapshot,
+      logs: this.snapshot.logs.map((log) => (log.id === op.entityId ? { ...log, syncStatus: 'synced' as const } : log)),
+    };
+  }
+
+  /** El registre només es marca sincronitzat quan el núvol ha acceptat aquesta operació. */
+  private noteSynced(op: SyncOp): void {
+    this.queue = this.queue.map((item) => (item.id === op.id ? { ...item, status: 'synced', lastError: null } : item));
+    if (op.op === 'delete') return;
+    const bump = <T extends { id: string; version?: number }>(list: T[]): T[] =>
+      list.map((item) => (item.id === op.entityId && item.version != null ? { ...item, version: item.version + 1 } : item));
+    if (op.entity === 'session_log') {
+      this.snapshot = {
+        ...this.snapshot,
+        logs: this.snapshot.logs.map((log) =>
+          log.id === op.entityId ? { ...log, syncStatus: 'synced', version: log.version != null ? log.version + 1 : log.version } : log,
+        ),
+      };
+    } else if (op.entity === 'exercise') this.snapshot = { ...this.snapshot, exercises: bump(this.snapshot.exercises) };
+    else if (op.entity === 'template') this.snapshot = { ...this.snapshot, templates: bump(this.snapshot.templates) };
+    else if (op.entity === 'plan') this.snapshot = { ...this.snapshot, plans: bump(this.snapshot.plans) };
+    else if (op.entity === 'session') this.snapshot = { ...this.snapshot, sessions: bump(this.snapshot.sessions) };
+  }
+
+  private rememberCursors(remote: DataCollections | null): void {
+    if (!remote) return;
+    const cursors = { ...(this.snapshot.settings.syncCursors ?? {}) };
+    const take = (key: string, items: { updatedAt: string }[]) => {
+      for (const item of items) {
+        if (item.updatedAt > (cursors[key] ?? '')) cursors[key] = item.updatedAt;
+      }
+    };
+    take('profiles', [...remote.trainers, ...remote.clients]);
+    take('invites', remote.invites ?? []);
+    take('exercises', remote.exercises);
+    take('templates', remote.templates);
+    take('plans', remote.plans);
+    take('sessions', remote.sessions);
+    take('session_logs', remote.logs);
+    this.snapshot = { ...this.snapshot, settings: { ...this.snapshot.settings, syncCursors: cursors } };
+  }
+
+  async setLanguage(language: 'ca' | 'es' | 'en'): Promise<void> {
+    const id = this.snapshot.settings.userId;
+    this.snapshot = {
+      ...this.snapshot,
+      settings: { ...this.snapshot.settings, language },
+      trainers: this.snapshot.trainers.map((trainer) => (trainer.id === id ? { ...trainer, language } : trainer)),
+      clients: this.snapshot.clients.map((client) => (client.id === id ? { ...client, language } : client)),
+    };
+    if (id && this.snapshot.settings.mode === 'account') this.touchQueue('profile', id);
+    await this.persist();
+    if (this.snapshot.settings.mode === 'account' && !this.snapshot.settings.offline) await this.flush();
+  }
+
+  async setPersonStatus(personId: string, status: 'active' | 'inactive'): Promise<void> {
+    const stamp = new Date().toISOString();
+    const trainer = this.snapshot.trainers.find((item) => item.id === personId);
+    const client = this.snapshot.clients.find((item) => item.id === personId);
+    if (!trainer && !client) throw new Error('No s’ha trobat el compte');
+    this.snapshot = {
+      ...this.snapshot,
+      trainers: this.snapshot.trainers.map((item) => (item.id === personId ? { ...item, status, updatedAt: stamp } : item)),
+      clients: this.snapshot.clients.map((item) => (item.id === personId ? { ...item, status, updatedAt: stamp } : item)),
+    };
+    this.touchQueue('profile', personId);
+    await this.persist();
+    await this.flush();
+  }
+
+  async moveClient(clientId: string, trainerId: string): Promise<void> {
+    const client = this.snapshot.clients.find((item) => item.id === clientId);
+    if (!client) throw new Error('No s’ha trobat el client');
+    if (!this.snapshot.trainers.some((item) => item.id === trainerId)) throw new Error('No s’ha trobat l’entrenador');
+    const stamp = new Date().toISOString();
+    this.snapshot = {
+      ...this.snapshot,
+      clients: this.snapshot.clients.map((item) => (item.id === clientId ? { ...item, trainerId, updatedAt: stamp } : item)),
+    };
+    this.touchQueue('profile', clientId);
+    await this.persist();
+    await this.flush();
   }
 
   /** El client veu el calendari per les sessions. Si només va pujar el pla, es reconstrueixen i, si som l'entrenador, es tornen a enviar. */
